@@ -1,0 +1,150 @@
+# {{.Brand}} K3s Deployments + ConfigMap + Secret
+#
+# 通过 envsubst 注入 ${REGISTRY} / ${APP_DOMAIN} 等变量，由 install.sh deploy 调用。
+# 敏感信息（JWT_SECRET / INTERNAL_API_SECRET / CONFIG_MASTER_KEY / DB password）
+# 通过 Secret 注入，prod 部署前请先用 kubectl create secret 创建。
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{.ProjectName}}-config
+data:
+  APP_ENV: "prod"
+  GATEWAY_PORT: "{{.Ports.Gateway}}"
+  API_PORT: "{{.Ports.API}}"
+  AI_ENGINE_PORT: "{{.Ports.AIEngine}}"
+  API_SERVICE_URL: "http://api:{{.Ports.API}}"
+  AI_ENGINE_SERVICE_URL: "http://ai-engine:{{.Ports.AIEngine}}"
+  CORS_ORIGINS: "https://${APP_DOMAIN}"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  MYSQL_HOST: "mysql"
+  MYSQL_PORT: "3306"
+  MYSQL_DB: "{{.ProjectName}}"
+---
+# Secret 占位：部署前请用 kubectl 实际创建：
+#   kubectl -n {{.ProjectName}} create secret generic {{.ProjectName}}-secret \
+#     --from-literal=JWT_SECRET=... \
+#     --from-literal=INTERNAL_API_SECRET=... \
+#     --from-literal=CONFIG_MASTER_KEY=... \
+#     --from-literal=MYSQL_PASSWORD=...
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{.ProjectName}}-secret
+type: Opaque
+stringData:
+  JWT_SECRET: "REPLACE_ME"
+  INTERNAL_API_SECRET: "REPLACE_ME"
+  CONFIG_MASTER_KEY: "REPLACE_ME"
+  MYSQL_PASSWORD: "REPLACE_ME"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels: { app: gateway }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: gateway } }
+  template:
+    metadata: { labels: { app: gateway } }
+    spec:
+      containers:
+        - name: gateway
+          image: ${REGISTRY}/{{.ProjectName}}-gateway:latest
+          ports: [{ containerPort: {{.Ports.Gateway}} }]
+          envFrom:
+            - configMapRef: { name: {{.ProjectName}}-config }
+            - secretRef:    { name: {{.ProjectName}}-secret }
+          readinessProbe:
+            httpGet: { path: /health, port: {{.Ports.Gateway}} }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: { app: api }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: api } }
+  template:
+    metadata: { labels: { app: api } }
+    spec:
+      containers:
+        - name: api
+          image: ${REGISTRY}/{{.ProjectName}}-api:latest
+          ports: [{ containerPort: {{.Ports.API}} }]
+          envFrom:
+            - configMapRef: { name: {{.ProjectName}}-config }
+            - secretRef:    { name: {{.ProjectName}}-secret }
+          readinessProbe:
+            httpGet: { path: /health, port: {{.Ports.API}} }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+{{- if .Features.AIEngine }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-engine
+  labels: { app: ai-engine }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ai-engine } }
+  template:
+    metadata: { labels: { app: ai-engine } }
+    spec:
+      containers:
+        - name: ai-engine
+          image: ${REGISTRY}/{{.ProjectName}}-ai-engine:latest
+          ports: [{ containerPort: {{.Ports.AIEngine}} }]
+          envFrom:
+            - configMapRef: { name: {{.ProjectName}}-config }
+            - secretRef:    { name: {{.ProjectName}}-secret }
+          readinessProbe:
+            httpGet: { path: /health, port: {{.Ports.AIEngine}} }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+{{- end }}
+{{- if .Features.Web }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels: { app: web }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+        - name: web
+          image: ${REGISTRY}/{{.ProjectName}}-web:latest
+          ports: [{ containerPort: {{.Ports.Web}} }]
+          env:
+            - { name: NODE_ENV, value: "production" }
+            - { name: PORT, value: "{{.Ports.Web}}" }
+{{- end }}
+{{- if .Features.Admin }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin
+  labels: { app: admin }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: admin } }
+  template:
+    metadata: { labels: { app: admin } }
+    spec:
+      containers:
+        - name: admin
+          image: ${REGISTRY}/{{.ProjectName}}-admin:latest
+          ports: [{ containerPort: 80 }]
+{{- end }}

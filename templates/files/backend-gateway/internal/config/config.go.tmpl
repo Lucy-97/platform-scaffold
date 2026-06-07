@@ -1,0 +1,126 @@
+package config
+
+import (
+	"os"
+	"strconv"
+	"strings"
+)
+
+// Config 网关全部配置。
+type Config struct {
+	Server   ServerConfig
+	JWT      JWTConfig
+	Redis    RedisConfig
+	Services ServiceRoutes
+	Internal InternalConfig
+	CORS     CORSConfig
+}
+
+type ServerConfig struct {
+	Port string
+}
+
+type JWTConfig struct {
+	Secret              string
+	AccessTokenExpSec   int
+	RefreshTokenExpDays int
+	// PublicPaths 不需要登录的前缀（命中后仍尝试解析 token 注入身份头）。
+	PublicPaths []string
+}
+
+type RedisConfig struct {
+	Host     string
+	Port     string
+	Password string
+	DB       int
+}
+
+// ServiceRoutes 定义下游服务地址。
+type ServiceRoutes struct {
+	APIService      string
+	AIEngineService string
+}
+
+type InternalConfig struct {
+	Secret string
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string
+}
+
+// Load 从环境变量读取配置。
+func Load() *Config {
+	return &Config{
+		Server: ServerConfig{
+			Port: getEnv("GATEWAY_PORT", "{{.Ports.Gateway}}"),
+		},
+		JWT: JWTConfig{
+			Secret:              getEnvSecret("JWT_SECRET"),
+			AccessTokenExpSec:   getEnvInt("JWT_ACCESS_TOKEN_EXP_SEC", 3600),
+			RefreshTokenExpDays: getEnvInt("JWT_REFRESH_TOKEN_EXP_DAYS", 30),
+			PublicPaths: []string{
+				"/health",
+				"/api/v1/auth",
+				"/oauth2/",
+				"/login/oauth2/",
+				"/internal/",
+				"/admin",
+			},
+		},
+		Redis: RedisConfig{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnv("REDIS_PORT", "{{.Ports.Redis}}"),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       getEnvInt("REDIS_DB", 0),
+		},
+		Services: ServiceRoutes{
+			APIService:      getEnv("API_SERVICE_URL", "http://localhost:{{.Ports.API}}"),
+			AIEngineService: getEnv("AI_ENGINE_SERVICE_URL", "http://localhost:{{.Ports.AIEngine}}"),
+		},
+		Internal: InternalConfig{Secret: getEnv("INTERNAL_API_SECRET", "")},
+		CORS: CORSConfig{
+			AllowedOrigins: getEnvSlice("CORS_ORIGINS", "http://localhost:{{.Ports.Web}},http://localhost:{{.Ports.Admin}}"),
+		},
+	}
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func getEnvSecret(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		panic("FATAL: Missing required secret: " + key)
+	}
+	return v
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
+		}
+	}
+	return fallback
+}
+
+func getEnvSlice(key, fallback string) []string {
+	v := os.Getenv(key)
+	if v == "" {
+		v = fallback
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}

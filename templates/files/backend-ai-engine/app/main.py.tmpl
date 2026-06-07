@@ -1,0 +1,66 @@
+"""{{.Brand}} AI Engine 入口。
+
+中间件链（自外向内）：
+  1. CORS（一般由 gateway 处理，本进程默认空白名单）
+  2. RequestID 注入/透传 X-Request-ID
+  3. InternalAuthMiddleware 校验 X-Internal-Secret（dev 默认空跳过）
+
+设计要点：
+  - lifespan 内启动 httpx.AsyncClient（连接复用）
+  - 全局 BizException → JSON 响应映射
+  - /docs /openapi.json 走 PUBLIC_PREFIXES 跳过 internal_auth
+"""
+from contextlib import asynccontextmanager
+
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.config import get_settings
+from app.core.exceptions import BizException
+from app.core.internal_auth import InternalAuthMiddleware
+from app.core.request_id import RequestIDMiddleware
+from app.routers import router as api_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    app.state.http = httpx.AsyncClient(
+        base_url=settings.api_base_url,
+        timeout=30.0,
+        headers={"X-Internal-Secret": settings.internal_secret} if settings.internal_secret else {},
+    )
+    yield
+    await app.state.http.aclose()
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(title="{{.Brand}} AI Engine", lifespan=lifespan)
+
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    app.add_middleware(InternalAuthMiddleware, secret=settings.internal_secret)
+    app.add_middleware(RequestIDMiddleware)
+
+    @app.exception_handler(BizException)
+    async def biz_handler(_: Request, exc: BizException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.http_status,
+            content={"code": exc.code, "msg": exc.msg, "data": None},
+        )
+
+    app.include_router(api_router)
+    return app
+
+
+app = create_app()

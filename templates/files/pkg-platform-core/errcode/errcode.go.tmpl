@@ -1,0 +1,83 @@
+// Package errcode 提供六位业务错误码注册表，对应 Java BizException(SoulsErrorCodeMessage.XXX) 风格。
+//
+// 设计:
+//   - 错误码六位字符串，按业务域分段（000xxx 系统层 / 100xxx 鉴权 / 102xxx 资源 / 104xxx 支付 / 105xxx AI 等）
+//   - 与 HTTP 状态码解耦：业务错误统一返回 HTTP 400 + code，鉴权返回 401/403，订阅返回 406
+//   - 通过 ErrorCode.Wrap() 携带运行时上下文，但 Code/Msg 始终来自注册表
+package errcode
+
+import "fmt"
+
+// ErrorCode 一对 code+msg。Code 是面向前端的稳定契约，Msg 仅作开发期回退提示，
+// 真实展示文案由前端按 Code 翻译。
+type ErrorCode struct {
+	Code string
+	Msg  string
+}
+
+// New 创建一个新的错误码。建议在各业务包内集中声明全局变量（见 examples/）。
+func New(code, msg string) ErrorCode {
+	return ErrorCode{Code: code, Msg: msg}
+}
+
+// Error 实现 error 接口。
+func (e ErrorCode) Error() string {
+	return fmt.Sprintf("[%s] %s", e.Code, e.Msg)
+}
+
+// Wrap 在错误码上挂载运行时上下文（不修改 Code/Msg）。
+func (e ErrorCode) Wrap(detail string) WrappedError {
+	return WrappedError{Code: e.Code, Msg: e.Msg, Detail: detail}
+}
+
+// WrappedError 承载完整错误信息：code、面向用户的 msg、以及开发期诊断 detail。
+type WrappedError struct {
+	Code   string
+	Msg    string
+	Detail string
+}
+
+func (w WrappedError) Error() string {
+	if w.Detail == "" {
+		return fmt.Sprintf("[%s] %s", w.Code, w.Msg)
+	}
+	return fmt.Sprintf("[%s] %s (%s)", w.Code, w.Msg, w.Detail)
+}
+
+// ============================================================
+// 通用错误码（所有业务都会用到的部分）
+// ============================================================
+
+var (
+	// 系统层 000xxx
+	ErrJWTInvalid          = New("000001", "Token is invalid.")
+	ErrTokenExpired        = New("000002", "Token has expired.")
+	ErrUserLoadFailed      = New("000003", "User does not exist or authorization failed to load.")
+	ErrUnauthorized        = New("000004", "Authentication is required. Please log in.")
+	ErrNoPermission        = New("000005", "Permission denied to access this resource.")
+	ErrServiceBusy         = New("000006", "Service is busy, please try again later.")
+	ErrParamMissing        = New("000007", "Parameter is missing.")
+	ErrRefreshTokenBlank   = New("000008", "Refresh token cannot be blank.")
+	ErrAccessTokenBlank    = New("000009", "Access token cannot be blank.")
+	ErrRefreshTokenExpired = New("000010", "Refresh token is expired.")
+	ErrInternalServer      = New("000099", "Internal server error.")
+
+	// 鉴权与注册 100xxx
+	ErrAuthBlank         = New("100001", "Mobile or email cannot be blank.")
+	ErrAuthInvalid       = New("100002", "The format of mobile or email is invalid.")
+	ErrVerifyCodeSent    = New("100004", "Verification code has been sent. Please wait a moment.")
+	ErrVerifyCodeInvalid = New("100005", "Verification code is invalid.")
+	ErrVerifyCodeExpired = New("100012", "Verification code is incorrect or has expired.")
+
+	// 文件与资源 103xxx
+	ErrFileNotExists  = New("103001", "File does not exist.")
+	ErrFileUploadFail = New("103004", "File upload failed.")
+
+	// 支付与积分 104xxx
+	ErrPointInsufficient = New("104001", "Insufficient points.")
+	ErrPointException    = New("104002", "An exception occurred with the points.")
+
+	// AI 与外部服务 105xxx
+	ErrChatAIFailed  = New("105006", "Request to AI service failed. Please try again later.")
+	ErrTryLockFailed = New("105017", "Failed to acquire lock, please try again later.")
+)

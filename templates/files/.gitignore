@@ -1,0 +1,42 @@
+# Build outputs
+.dev-bins/
+.dev-pids/
+.dev-logs/
+*.exe
+*.test
+*.out
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+deploy/k3s/cluster-config.env
+deploy/k3s/kubeconfig*
+
+# Go
+vendor/
+*.bin
+
+# Node / Next / Vite
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

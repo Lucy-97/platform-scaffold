@@ -1,0 +1,28 @@
+// Package router 注册业务 API 路由。
+//
+// 路由前缀均以 /api/v1/ 开头，与 gateway 转发规则对齐。
+// 新增业务模块时：
+//   1. 在 internal/model + internal/repository + internal/service + internal/handler 下增加对应文件
+//   2. 在 internal/app/bootstrap.go 中装配
+//   3. 在此处注册路由
+package router
+
+import (
+	"github.com/gin-gonic/gin"
+
+	"{{.GoModulePath}}/backend-api/internal/handler"
+)
+
+// Setup 注册全部业务路由。
+func Setup(r *gin.Engine, h *handler.Set) {
+	v1 := r.Group("/api/v1")
+
+	// ─── Users ───
+	users := v1.Group("/users")
+	{
+		users.GET("/me", h.User.Me)
+		// TODO: users.POST("/me/profile", h.User.UpdateProfile)
+	}
+
+	// TODO: 在此追加业务模块路由
+}

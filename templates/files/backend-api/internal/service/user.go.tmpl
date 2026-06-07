@@ -1,0 +1,37 @@
+// Package service 业务编排层（对应 xdd/aigc 中的 engine/service）。
+//
+// 职责：编排 repository、cache、外部服务调用；不直接处理 HTTP 请求/响应。
+package service
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/redis/go-redis/v9"
+
+	"{{.GoModulePath}}/backend-api/internal/model"
+	"{{.GoModulePath}}/backend-api/internal/repository"
+)
+
+// UserService 用户业务服务。
+type UserService interface {
+	GetByUUID(ctx context.Context, uuid string) (*model.User, error)
+}
+
+type userService struct {
+	repo repository.UserRepository
+	rdb  *redis.Client
+}
+
+// NewUserService 创建用户服务。rdb 可为 nil（缓存优雅降级）。
+func NewUserService(repo repository.UserRepository, rdb *redis.Client) UserService {
+	return &userService{repo: repo, rdb: rdb}
+}
+
+// GetByUUID 通过业务 UUID 拉取用户。
+func (s *userService) GetByUUID(ctx context.Context, uuid string) (*model.User, error) {
+	if uuid == "" {
+		return nil, fmt.Errorf("uuid required")
+	}
+	return s.repo.FindByUUID(ctx, uuid)
+}

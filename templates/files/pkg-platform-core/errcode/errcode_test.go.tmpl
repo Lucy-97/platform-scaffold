@@ -1,0 +1,19 @@
+package errcode
+
+import "testing"
+
+func TestErrorCodeError(t *testing.T) {
+	if got := ErrUnauthorized.Error(); got != "[000004] Authentication is required. Please log in." {
+		t.Fatalf("unexpected: %s", got)
+	}
+}
+
+func TestWrap(t *testing.T) {
+	w := ErrPointInsufficient.Wrap("balance=0")
+	if w.Code != "104001" {
+		t.Fatalf("code mismatch: %s", w.Code)
+	}
+	if w.Error() != "[104001] Insufficient points. (balance=0)" {
+		t.Fatalf("wrap msg mismatch: %s", w.Error())
+	}
+}

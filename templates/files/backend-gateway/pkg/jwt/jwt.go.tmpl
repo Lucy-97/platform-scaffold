@@ -1,0 +1,87 @@
+// Package jwt 网关侧 JWT 管理器，实现 pkg-platform-core/middleware.JWTValidator 接口。
+package jwt
+
+import (
+	"errors"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+
+	pmw "{{.GoModulePath}}/pkg-platform-core/middleware"
+)
+
+// ErrTokenExpired 用于上层区分过期与无效。
+var ErrTokenExpired = errors.New("token expired")
+
+// Manager 签发与校验 access/refresh token。
+type Manager struct {
+	secret              []byte
+	accessTokenExpSec   int
+	refreshTokenExpDays int
+}
+
+// claims 内部 JWT claims 结构。
+type claims struct {
+	UserUUID    string `json:"sub"`
+	MemberLevel string `json:"lvl,omitempty"`
+	jwt.RegisteredClaims
+}
+
+// NewManager 创建管理器。
+func NewManager(secret string, accessExpSec, refreshExpDays int) *Manager {
+	return &Manager{
+		secret:              []byte(secret),
+		accessTokenExpSec:   accessExpSec,
+		refreshTokenExpDays: refreshExpDays,
+	}
+}
+
+// IssueAccessToken 签发短期访问 token。
+func (m *Manager) IssueAccessToken(userUUID, memberLevel string) (string, error) {
+	now := time.Now()
+	c := claims{
+		UserUUID:    userUUID,
+		MemberLevel: memberLevel,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(m.accessTokenExpSec) * time.Second)),
+		},
+	}
+	t := jwt.NewWithClaims(jwt.SigningMethodHS256, c)
+	return t.SignedString(m.secret)
+}
+
+// IssueRefreshToken 签发长期刷新 token。
+func (m *Manager) IssueRefreshToken(userUUID string) (string, error) {
+	now := time.Now()
+	c := claims{
+		UserUUID: userUUID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(m.refreshTokenExpDays) * 24 * time.Hour)),
+		},
+	}
+	t := jwt.NewWithClaims(jwt.SigningMethodHS256, c)
+	return t.SignedString(m.secret)
+}
+
+// ValidateToken 实现 pmw.JWTValidator。过期返回 (zeroValue with Expired=true, ErrTokenExpired)。
+func (m *Manager) ValidateToken(token string) (pmw.Claims, error) {
+	parsed, err := jwt.ParseWithClaims(token, &claims{}, func(t *jwt.Token) (any, error) {
+		return m.secret, nil
+	})
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return pmw.Claims{Expired: true}, ErrTokenExpired
+		}
+		return pmw.Claims{}, err
+	}
+	c, ok := parsed.Claims.(*claims)
+	if !ok || !parsed.Valid {
+		return pmw.Claims{}, errors.New("invalid token")
+	}
+	return pmw.Claims{
+		UserUUID:    c.UserUUID,
+		MemberLevel: c.MemberLevel,
+	}, nil
+}

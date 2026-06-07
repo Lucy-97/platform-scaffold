@@ -1,0 +1,58 @@
+import { useEffect, useState } from "react";
+
+interface User {
+  uuid: string;
+  email: string;
+  nickname?: string;
+  memberLevel: string;
+}
+
+export default function DashboardPage() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch("/admin/users", { credentials: "include" });
+        const json = await resp.json();
+        if (json.code === "200") setUsers(json.data?.data ?? []);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  return (
+    <div style={pageStyle}>
+      <h1>{{.Brand}} Admin Dashboard</h1>
+      <p>占位页：用户列表（接入 /admin/users 后替换）</p>
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>UUID</th>
+              <th>Email</th>
+              <th>Nickname</th>
+              <th>Level</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <tr key={u.uuid}>
+                <td>{u.uuid}</td>
+                <td>{u.email}</td>
+                <td>{u.nickname ?? "-"}</td>
+                <td>{u.memberLevel}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+const pageStyle: React.CSSProperties = { padding: 32, fontFamily: "system-ui" };

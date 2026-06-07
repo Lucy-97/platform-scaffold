@@ -1,0 +1,88 @@
+# ═══════════════════════════════════════════════
+# AIGC .gitignore
+# ═══════════════════════════════════════════════
+
+### go exe
+backend-api/main
+
+### BAK FILES ###
+*.bak
+
+### IDE ###
+.idea/
+.vscode/
+.VSCodeCounter/
+*.iws
+*.iml
+*.ipr
+.lh/
+.DS_Store
+
+### Go ###
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+### Python ###
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+### Node / Frontend ###
+node_modules/
+.next/
+build/
+dist/
+
+### Logs ###
+*.log
+nohup.out
+
+### Environment ###
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+### Config Tool Secrets ###
+deploy/tools/keys.json
+
+### Dev Script ###
+.dev-pids/
+.dev-logs/
+.dev-bins/
+
+### Expo ###
+.expo/
+
+### Cloudflare ###
+.wrangler/
+
+# Java build artifacts
+legacy_backend_ref/**/target/
+
+# LSAI
+lsai/
+
+# 视频文件
+*.mp4
+*.MP4
+.venv/
+
+# LLM 调试日志（本地开发环境）
+deploy/local/log/
+
+### Build Artifacts ###
+.build/
+
+### Testing Output ###
+deploy-local/integration-test/outputs/
+deploy-local/integration-test/outputs_benchmark/
+
+# 后台上传临时文件目录
+.bg_uploads/
+

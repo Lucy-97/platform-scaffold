@@ -1,0 +1,46 @@
+// Package handler 处理 HTTP 请求/响应，仅依赖 service 层。
+//
+// 职责：解析请求参数 → 调用 service → 用 response 包返回统一格式。
+package handler
+
+import (
+	"github.com/gin-gonic/gin"
+
+	"{{.GoModulePath}}/backend-api/internal/service"
+	"{{.GoModulePath}}/pkg-platform-core/response"
+)
+
+// Set 把所有 handler 聚合到一个结构，便于在 router 中传递。
+type Set struct {
+	User *UserHandler
+}
+
+// UserHandler 用户域 handler。
+type UserHandler struct {
+	svc service.UserService
+}
+
+// NewUserHandler 创建。
+func NewUserHandler(svc service.UserService) *UserHandler {
+	return &UserHandler{svc: svc}
+}
+
+// Me GET /api/v1/users/me — 返回当前登录用户信息。
+// 依赖 gateway 注入的 X-User-UUID 头。
+func (h *UserHandler) Me(c *gin.Context) {
+	uuid := c.GetHeader("X-User-UUID")
+	if uuid == "" {
+		response.Unauthorized(c, "100001", "missing user identity")
+		return
+	}
+	u, err := h.svc.GetByUUID(c.Request.Context(), uuid)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	if u == nil {
+		response.Err(c, 404, "100404", "user not found")
+		return
+	}
+	response.OK(c, u)
+}

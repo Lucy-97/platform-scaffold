@@ -1,0 +1,55 @@
+// {{.Brand}} API 入口。
+//
+// 设计要点：
+//   - 三层架构：Handler → Service → Repository
+//   - 中间件：Recovery → CORS(信任 gateway) → RequestID → Metrics → InternalAuth
+//   - InternalAuth 通过 X-Internal-Secret 校验请求来自 gateway
+//   - 用户身份从 X-User-UUID 头读取（由 gateway 注入）
+package main
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"{{.GoModulePath}}/backend-api/internal/app"
+)
+
+func main() {
+	srv, deps, err := app.Bootstrap()
+	if err != nil {
+		slog.Error("Bootstrap failed", "error", err)
+		os.Exit(1)
+	}
+
+	httpSrv := &http.Server{Addr: ":" + deps.Cfg.Server.Port, Handler: srv}
+	go func() {
+		slog.Info("API starting", "port", deps.Cfg.Server.Port)
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Failed to start API", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	slog.Info("Shutting down...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Forced shutdown", "error", err)
+	}
+	deps.Close()
+	slog.Info("Server stopped")
+}
+
+// 编译时确保 gin 引擎是 http.Handler
+var _ http.Handler = (*gin.Engine)(nil)

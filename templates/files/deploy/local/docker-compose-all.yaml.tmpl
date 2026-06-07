@@ -1,0 +1,47 @@
+# {{.Brand}} 本地开发依赖编排
+#
+# 用法：cd deploy/local && docker compose -f docker-compose-all.yaml up -d
+#
+# 仅启动 MySQL + Redis。应用进程（gateway/api/ai-engine/web/admin）请用
+# `./deploy/local/start.sh start` 在宿主机直接跑，便于热重载与调试。
+name: {{.ProjectName}}
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: {{.ProjectName}}-mysql
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "{{.Ports.MySQL}}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_PASSWORD:-root}"
+      MYSQL_DATABASE: {{.ProjectName}}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ../../database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: {{.ProjectName}}-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "{{.Ports.Redis}}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  mysql-data:
+  redis-data:

@@ -1,0 +1,54 @@
+// Package repository 数据访问层，仅依赖 model + gorm，不感知业务逻辑。
+package repository
+
+import (
+	"context"
+	"errors"
+
+	"gorm.io/gorm"
+
+	"{{.GoModulePath}}/backend-api/internal/model"
+)
+
+// UserRepository 用户仓库接口。
+type UserRepository interface {
+	FindByUUID(ctx context.Context, uuid string) (*model.User, error)
+	FindByEmail(ctx context.Context, email string) (*model.User, error)
+	Create(ctx context.Context, u *model.User) error
+	Update(ctx context.Context, u *model.User) error
+}
+
+type userRepo struct {
+	db *gorm.DB
+}
+
+// NewUserRepository 创建用户仓库。
+func NewUserRepository(db *gorm.DB) UserRepository {
+	return &userRepo{db: db}
+}
+
+func (r *userRepo) FindByUUID(ctx context.Context, uuid string) (*model.User, error) {
+	var u model.User
+	err := r.db.WithContext(ctx).Where("uuid = ?", uuid).First(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &u, err
+}
+
+func (r *userRepo) FindByEmail(ctx context.Context, email string) (*model.User, error) {
+	var u model.User
+	err := r.db.WithContext(ctx).Where("email = ?", email).First(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &u, err
+}
+
+func (r *userRepo) Create(ctx context.Context, u *model.User) error {
+	return r.db.WithContext(ctx).Create(u).Error
+}
+
+func (r *userRepo) Update(ctx context.Context, u *model.User) error {
+	return r.db.WithContext(ctx).Save(u).Error
+}

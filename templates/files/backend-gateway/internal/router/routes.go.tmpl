@@ -1,0 +1,56 @@
+// Package router 配置 API 路由表，把请求映射到下游服务。
+//
+// 通用路由模式（参考 xdd/aigc）：
+//   - /api/v1/auth/*      → API Service     (登录注册)
+//   - /api/v1/users/*     → API Service     (用户域)
+//   - /api/v1/files/*     → API Service     (文件域)
+//   - /api/v1/chat/*      → AI Engine       (对话流式){{- if .Features.AIEngine }}
+//   - /api/v1/generate/*  → AI Engine       (生成流式){{- end }}
+//   - /admin/*            → API Service     (管理后台 API)
+//   - /internal/*         → API Service     (内部 worker)
+package router
+
+import (
+	"github.com/gin-gonic/gin"
+
+	"{{.GoModulePath}}/backend-gateway/internal/config"
+	"{{.GoModulePath}}/backend-gateway/internal/proxy"
+)
+
+// SetupRoutes 注册路由。新增业务模块时在 apiDomains/aiDomains 列表追加即可。
+func SetupRoutes(r *gin.Engine, cfg *config.Config) {
+	api := cfg.Services.APIService
+{{- if .Features.AIEngine }}
+	ai := cfg.Services.AIEngineService
+{{- end }}
+	secret := cfg.Internal.Secret
+
+	// ─── Auth ───
+	v1Auth := r.Group("/api/v1/auth")
+	v1Auth.Any("/*path", proxy.ForwardRequest(api, secret))
+
+	// ─── OAuth2 ───
+	r.Group("/oauth2/authorize").Any("/*path", proxy.ForwardRequest(api, secret))
+	r.Group("/login/oauth2/code").Any("/*path", proxy.ForwardRequest(api, secret))
+
+	// ─── 通用业务域 → API ───
+	apiDomains := []string{"users", "files", "search", "track"}
+	// TODO: 在此追加你的业务域，如 "products", "orders"
+	for _, d := range apiDomains {
+		r.Group("/api/v1/"+d).Any("/*path", proxy.ForwardRequest(api, secret))
+		r.Any("/api/v1/"+d, proxy.ForwardRequest(api, secret))
+	}
+
+{{- if .Features.AIEngine }}
+
+	// ─── AI 引擎 → :{{.Ports.AIEngine}} ───
+	aiDomains := []string{"chat", "generate"}
+	for _, d := range aiDomains {
+		r.Group("/api/v1/"+d).Any("/*path", proxy.ForwardRequest(ai, secret))
+	}
+{{- end }}
+
+	// ─── Admin & Internal（下游自行校验）───
+	r.Group("/admin").Any("/*path", proxy.ForwardRequest(api, secret))
+	r.Group("/internal").Any("/*path", proxy.ForwardRequest(api, secret))
+}

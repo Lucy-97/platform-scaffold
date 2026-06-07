@@ -1,0 +1,12 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  // 开发期把 /api/* 直接代理到 gateway，避免本地跨域。
+  async rewrites() {
+    return [
+      { source: "/api/:path*", destination: "http://localhost:{{.Ports.Gateway}}/api/:path*" },
+    ];
+  },
+};
+
+export default nextConfig;

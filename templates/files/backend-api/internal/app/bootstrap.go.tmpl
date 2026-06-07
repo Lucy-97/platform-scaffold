@@ -1,0 +1,98 @@
+// Package app 负责装配整个 API 服务的依赖图。
+//
+// 装配顺序：config → DB → Redis → Repository → Service → Handler → Router
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+
+	"{{.GoModulePath}}/backend-api/internal/config"
+	"{{.GoModulePath}}/backend-api/internal/handler"
+	"{{.GoModulePath}}/backend-api/internal/repository"
+	"{{.GoModulePath}}/backend-api/internal/router"
+	"{{.GoModulePath}}/backend-api/internal/service"
+	pmw "{{.GoModulePath}}/pkg-platform-core/middleware"
+)
+
+// Deps 持有需要在 main 关闭时清理的依赖。
+type Deps struct {
+	Cfg *config.Config
+	DB  *gorm.DB
+	RDB *redis.Client
+}
+
+// Close 关闭外部连接。
+func (d *Deps) Close() {
+	if d.RDB != nil {
+		_ = d.RDB.Close()
+	}
+	if d.DB != nil {
+		if sqlDB, err := d.DB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	}
+}
+
+// Bootstrap 装配并返回一个就绪的 *gin.Engine 与 Deps。
+func Bootstrap() (*gin.Engine, *Deps, error) {
+	cfg := config.Load()
+
+	// ─── DB ───
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+		cfg.DB.User, cfg.DB.Password, cfg.DB.Host, cfg.DB.Port, cfg.DB.Name)
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect mysql: %w", err)
+	}
+	slog.Info("MySQL connected")
+
+	// ─── Redis ───
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		slog.Warn("Redis ping failed (cache disabled)", "error", err)
+	} else {
+		slog.Info("Redis connected")
+	}
+
+	// ─── Repository ───
+	userRepo := repository.NewUserRepository(db)
+
+	// ─── Service ───
+	userSvc := service.NewUserService(userRepo, rdb)
+
+	// ─── Handler ───
+	handlers := &handler.Set{
+		User: handler.NewUserHandler(userSvc),
+	}
+
+	// ─── Gin ───
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(pmw.RequestID())
+	r.Use(pmw.PrometheusMetrics())
+	r.Use(pmw.InternalAuth(cfg.Internal.Secret))
+
+	router.Setup(r, handlers)
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok", "service": "{{.ProjectName}}-api"})
+	})
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	return r, &Deps{Cfg: cfg, DB: db, RDB: rdb}, nil
+}

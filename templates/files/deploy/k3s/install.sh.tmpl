@@ -1,0 +1,58 @@
+#!/bin/bash
+# =============================================================================
+# {{.Brand}} K3s 集群安装/部署脚本
+#
+# 第一次使用前请先 cp cluster-config.env.example cluster-config.env 并填好。
+#
+# 命令:
+#   ./install.sh fetch-kubeconfig   从 K3s 节点拷贝 kubeconfig 到本地
+#   ./install.sh deploy             apply prod.yaml + services.yaml
+#   ./install.sh status             查看 pods / svc 状态
+#   ./install.sh logs <deploy-name> 查看某个 deployment 日志
+# =============================================================================
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/cluster-config.env"
+
+[ -f "$CONFIG_FILE" ] || { echo "✗ 未找到 $CONFIG_FILE，请先复制 .env.example 并填好"; exit 1; }
+set -a; source "$CONFIG_FILE"; set +a
+
+KUBECONFIG_FILE="$SCRIPT_DIR/kubeconfig"
+KUBECTL="kubectl --kubeconfig=$KUBECONFIG_FILE"
+
+cmd_fetch_kubeconfig() {
+    echo "→ 从 $K3S_NODE_HOST 拉取 /etc/rancher/k3s/k3s.yaml"
+    scp -P "$K3S_NODE_SSH_PORT" "$K3S_NODE_HOST:/etc/rancher/k3s/k3s.yaml" "$KUBECONFIG_FILE"
+    local host=${K3S_NODE_HOST##*@}
+    sed -i.bak "s/127.0.0.1/$host/g" "$KUBECONFIG_FILE"
+    chmod 600 "$KUBECONFIG_FILE"
+    echo "✓ kubeconfig 已写入 $KUBECONFIG_FILE"
+}
+
+cmd_deploy() {
+    $KUBECTL create namespace "$NAMESPACE" --dry-run=client -o yaml | $KUBECTL apply -f -
+    envsubst < "$SCRIPT_DIR/prod.yaml"     | $KUBECTL apply -n "$NAMESPACE" -f -
+    envsubst < "$SCRIPT_DIR/services.yaml" | $KUBECTL apply -n "$NAMESPACE" -f -
+    echo "✓ 已部署到命名空间 $NAMESPACE"
+}
+
+cmd_status() {
+    $KUBECTL -n "$NAMESPACE" get pods,svc,ingress -o wide
+}
+
+cmd_logs() {
+    local target="${1:-gateway}"
+    $KUBECTL -n "$NAMESPACE" logs -f "deploy/$target"
+}
+
+case "${1:-}" in
+    fetch-kubeconfig) cmd_fetch_kubeconfig ;;
+    deploy)           cmd_deploy ;;
+    status)           cmd_status ;;
+    logs)             shift; cmd_logs "$@" ;;
+    *)
+        echo "用法: $0 {fetch-kubeconfig|deploy|status|logs <deploy>}"
+        exit 1
+        ;;
+esac

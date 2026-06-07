@@ -1,0 +1,241 @@
+#!/bin/bash
+# =============================================================================
+# {{.Brand}} 本地开发一键启动脚本
+#
+# 快捷命令:
+#   ./start.sh start             启动后端三件套 + 前端
+#   ./start.sh start backend     仅启动 gateway/api/ai-engine
+#   ./start.sh stop all          停止全部
+#   ./start.sh status            查看状态
+#   ./start.sh logs gateway      查看指定服务日志
+#
+# 单服务名: gateway, api, ai-engine, web, admin
+# 服务组名: all, backend, web (= 后端+前端)
+# =============================================================================
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ENV_FILE="$PROJECT_ROOT/deploy/local/.env"
+PID_DIR="$PROJECT_ROOT/.dev-pids"
+LOG_DIR="$PROJECT_ROOT/.dev-logs"
+BIN_DIR="$PROJECT_ROOT/.dev-bins"
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+# 端口映射（与 .env 保持一致）
+port_of() {
+    case "$1" in
+        gateway)   echo {{.Ports.Gateway}} ;;
+        api)       echo {{.Ports.API}} ;;
+        ai-engine) echo {{.Ports.AIEngine}} ;;
+        web)       echo {{.Ports.Web}} ;;
+        admin)     echo {{.Ports.Admin}} ;;
+        *)         echo 0 ;;
+    esac
+}
+
+print_banner() {
+    echo ""
+    echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║   🚀 {{.Brand}} Dev Environment${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+resolve_targets() {
+    local raw=("$@") resolved=()
+    [ ${#raw[@]} -eq 0 ] && raw=("all")
+    for t in "${raw[@]}"; do
+        case "$t" in
+            all)             resolved+=("gateway" "api" "ai-engine" "web" "admin") ;;
+            backend)         resolved+=("gateway" "api" "ai-engine") ;;
+            web)             resolved+=("gateway" "api" "ai-engine" "web" "admin") ;;
+            gateway|api|ai-engine|web|admin) resolved+=("$t") ;;
+            frontend)        resolved+=("web") ;;
+            *) echo -e "${YELLOW}未知目标: $t，已忽略${NC}" >&2 ;;
+        esac
+    done
+    echo "${resolved[@]}" | tr ' ' '\n' | awk '!a[$0]++' | tr '\n' ' '
+}
+
+check_deps() {
+    [ ! -f "$ENV_FILE" ] && {
+        echo -e "${RED}✗ 未找到 $ENV_FILE，请先 cp deploy/local/.env.example deploy/local/.env${NC}"
+        exit 1
+    }
+    command -v go &>/dev/null || { echo -e "${RED}✗ Go 未安装${NC}"; exit 1; }
+}
+
+start_proc() {
+    local name="$1" dir="$2" cmd="$3" port="$4"
+    echo -e "${CYAN}🚀 启动 ${name}...${NC}"
+
+    if [ -f "$PID_DIR/${name}.pid" ]; then
+        local pid=$(cat "$PID_DIR/${name}.pid")
+        if kill -0 "$pid" 2>/dev/null; then
+            echo -e "   ${GREEN}✓${NC} ${name} 已在运行 (PID: $pid)"
+            return 0
+        fi
+    fi
+
+    if [ "$port" != "0" ]; then
+        local old=$(lsof -t -iTCP:$port -sTCP:LISTEN 2>/dev/null || true)
+        [ -n "$old" ] && echo "$old" | xargs kill -9 2>/dev/null || true
+    fi
+
+    mkdir -p "$PID_DIR" "$LOG_DIR"
+    local log_file="$LOG_DIR/${name}.log"
+    echo -e "\n──── $(date '+%Y-%m-%d %H:%M:%S') 启动 ${name} ────" >> "$log_file"
+    bash -c "cd \"$dir\" && $cmd" >> "$log_file" 2>&1 &
+    echo $! > "$PID_DIR/${name}.pid"
+
+    local pid=$(cat "$PID_DIR/${name}.pid")
+    echo -ne "   等待启动 "
+    for i in $(seq 1 30); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo -e "\n   ${RED}✗ ${name} 启动失败${NC}"
+            tail -n 8 "$log_file" | awk '{print "     " $0}'
+            return 1
+        fi
+        if [ "$port" != "0" ] && lsof -iTCP:$port -sTCP:LISTEN &>/dev/null 2>&1; then
+            echo -e "\n   ${GREEN}✓${NC} ${name} 已就绪 (端口 $port)"
+            return 0
+        fi
+        echo -n "."
+        sleep 1
+    done
+    echo -e "\n   ${RED}✗ ${name} 启动超时${NC}"
+    return 1
+}
+
+start_target() {
+    local t="$1"
+    case "$t" in
+        gateway)
+            mkdir -p "$BIN_DIR"
+            (cd "$PROJECT_ROOT/backend-gateway" && go build -o "$BIN_DIR/gateway" ./cmd/gateway) || return 1
+            start_proc "gateway" "$PROJECT_ROOT/backend-gateway" \
+                "set -a; source $ENV_FILE; set +a; $BIN_DIR/gateway" {{.Ports.Gateway}}
+            ;;
+        api)
+            mkdir -p "$BIN_DIR"
+            (cd "$PROJECT_ROOT/backend-api" && go build -o "$BIN_DIR/api" ./cmd/api) || return 1
+            start_proc "api" "$PROJECT_ROOT/backend-api" \
+                "set -a; source $ENV_FILE; set +a; $BIN_DIR/api" {{.Ports.API}}
+            ;;
+        {{- if .Features.AIEngine }}
+        ai-engine)
+            (cd "$PROJECT_ROOT/backend-ai-engine" && pip3 install -q -r requirements.txt > /dev/null 2>&1) || true
+            start_proc "ai-engine" "$PROJECT_ROOT/backend-ai-engine" \
+                "set -a; source $ENV_FILE; set +a; export PYTHONPATH=$PROJECT_ROOT/backend-ai-engine; exec python3 -m uvicorn app.main:app --host 0.0.0.0 --port {{.Ports.AIEngine}} --reload" {{.Ports.AIEngine}}
+            ;;
+        {{- end }}
+        {{- if .Features.Web }}
+        web)
+            start_proc "web" "$PROJECT_ROOT/frontend-web" \
+                "set -a; source $ENV_FILE; set +a; npx next dev -p {{.Ports.Web}}" {{.Ports.Web}}
+            ;;
+        {{- end }}
+        {{- if .Features.Admin }}
+        admin)
+            start_proc "admin" "$PROJECT_ROOT/frontend-admin" \
+                "set -a; source $ENV_FILE; set +a; npx vite --port {{.Ports.Admin}}" {{.Ports.Admin}}
+            ;;
+        {{- end }}
+        *) echo -e "${YELLOW}跳过未启用的目标: $t${NC}" ;;
+    esac
+}
+
+stop_targets() {
+    local resolved=($(resolve_targets "$@"))
+    echo -e "${YELLOW}⏹  停止: ${resolved[*]}${NC}"
+    for name in "${resolved[@]}"; do
+        local pid_file="$PID_DIR/${name}.pid"
+        if [ -f "$pid_file" ]; then
+            local pid=$(cat "$pid_file")
+            kill "$pid" 2>/dev/null || true
+            for i in $(seq 1 10); do
+                kill -0 "$pid" 2>/dev/null || break
+                sleep 0.5
+            done
+            kill -9 "$pid" 2>/dev/null || true
+            rm -f "$pid_file"
+        fi
+        local port=$(port_of "$name")
+        [ "$port" != "0" ] && {
+            local pids=$(lsof -t -iTCP:$port -sTCP:LISTEN 2>/dev/null || true)
+            [ -n "$pids" ] && echo "$pids" | xargs kill -9 2>/dev/null || true
+        }
+    done
+    echo -e "${GREEN}✓ 已停止${NC}"
+}
+
+show_status() {
+    echo -e "${CYAN}📊 服务状态:${NC}"
+    for svc in gateway api ai-engine web admin; do
+        local pid_file="$PID_DIR/${svc}.pid"
+        if [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+            echo -e "   ${GREEN}●${NC} ${svc}  PID: $(cat "$pid_file")  Port: $(port_of $svc)"
+        else
+            echo -e "   ${RED}●${NC} ${svc}  (未运行)"
+        fi
+    done
+    echo ""
+}
+
+print_summary() {
+    echo ""
+    echo -e "${GREEN}═══════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  🎉 已启动${NC}"
+    echo -e "${GREEN}═══════════════════════════════════════════${NC}"
+    echo -e "  Gateway:   http://localhost:{{.Ports.Gateway}}"
+    echo -e "  API:       http://localhost:{{.Ports.API}}"
+    {{- if .Features.AIEngine }}
+    echo -e "  AI Engine: http://localhost:{{.Ports.AIEngine}}"
+    {{- end }}
+    {{- if .Features.Web }}
+    echo -e "  Web:       http://localhost:{{.Ports.Web}}"
+    {{- end }}
+    {{- if .Features.Admin }}
+    echo -e "  Admin:     http://localhost:{{.Ports.Admin}}"
+    {{- end }}
+    echo ""
+}
+
+main() {
+    print_banner
+    local cmd="${1:-status}"; shift || true
+    case "$cmd" in
+        start)
+            check_deps
+            local resolved=($(resolve_targets "$@"))
+            for t in "${resolved[@]}"; do
+                start_target "$t" || echo -e "${RED}⚠ ${t} 启动失败${NC}"
+            done
+            print_summary
+            ;;
+        stop)
+            [ $# -eq 0 ] && { echo -e "${RED}stop 需要目标参数${NC}"; exit 1; }
+            stop_targets "$@"
+            ;;
+        restart)
+            check_deps
+            local resolved=($(resolve_targets "$@"))
+            stop_targets "${resolved[@]}"
+            for t in "${resolved[@]}"; do
+                start_target "$t" || echo -e "${RED}⚠ ${t} 启动失败${NC}"
+            done
+            print_summary
+            ;;
+        status) show_status ;;
+        logs)
+            local svc="${1:-gateway}"
+            tail -f "$LOG_DIR/${svc}.log"
+            ;;
+        *)
+            echo -e "${CYAN}用法:${NC} ./start.sh {start|stop|restart|status|logs} [target]"
+            echo -e "${CYAN}target:${NC} all | backend | gateway | api | ai-engine | web | admin"
+            ;;
+    esac
+}
+
+main "$@"
