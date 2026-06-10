@@ -9,7 +9,7 @@
 | 进程 | 端口 | 职责 | 写权限 |
 |------|------|------|--------|
 | `backend-gateway` (Go) | {{.Ports.Gateway}} | JWT 鉴权、限流、CORS、把请求按路径前缀转发 | 否（只代理） |
-| `backend-api` (Go) | {{.Ports.API}} | 三层（handler→service→repository）业务逻辑 | **是（唯一写库者）** |
+| `backend-api` (Go) | {{.Ports.API}} | 四层（handler→engine→service→repository）业务逻辑 | **是（唯一写库者）** |
 {{- if .Features.AIEngine }}
 | `backend-ai-engine` (Python) | {{.Ports.AIEngine}} | AI 编排、LLM/Tool 调度 | 否（只读 + 委托 Go API 写） |
 {{- end }}
@@ -97,13 +97,20 @@ Gateway --[X-Internal-Secret + X-User-UUID]--> API / AI-Engine
 backend-api/internal/
 ├── model/order.go              # GORM model
 ├── repository/order_repo.go    # DB 访问
-├── service/order_service.go    # 业务逻辑
+├── service/order_service.go    # 原子业务操作
+├── engine/order_engine.go      # 多步编排（如 校验→锁→扣减→创建）
 └── handler/order.go            # HTTP handler
 ```
 
+层级规则：
+- **Handler**：解析参数、调用 engine/service、返回响应。不含业务逻辑。
+- **Engine**：编排多个 service、分布式锁、外部调用。用于复杂流程。
+- **Service**：单一职责的原子操作。简单查询可由 handler 直接调用。
+- **Repository**：数据访问，仅依赖 model + gorm。
+
 然后：
 1. 在 [router/routes.go](file:///backend-api/internal/router/routes.go) 挂路由
-2. 在 [bootstrap.go](file:///backend-api/internal/app/bootstrap.go) 装配 DI
+2. 在 [bootstrap.go](file:///backend-api/internal/app/bootstrap.go) 装配 DI（repo → svc → engine → handler）
 3. 在 [errcode/errcode.go](file:///pkg-platform-core/errcode/errcode.go) 注册新错误码（10xxxx）
 4. 数据库变更写到 `database/migrations/`，**禁止直接改 init.sql**
 
@@ -111,7 +118,7 @@ backend-api/internal/
 
 - Go 单测：`go test ./...`
 - pkg-platform-core 必须独立可测：`cd pkg-platform-core && go test ./...`
-- 集成测试用 docker-compose 起依赖
+- 集成测试：`bash deploy/local/integration-test/run-all.sh`
 
 ---
 

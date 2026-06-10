@@ -1,0 +1,70 @@
+#!/bin/bash
+# =============================================================================
+# {{.Brand}} 集成测试主入口
+# 按顺序执行所有子测试脚本
+#
+# 用法:
+#   ./run-all.sh           # 通过 Gateway (:{{.Ports.Gateway}})
+#   ./run-all.sh direct    # 直连 Go API (:{{.Ports.API}})
+# =============================================================================
+set -e
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# 颜色
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo -e "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║       {{.Brand}} Integration Test Suite              ║${NC}"
+echo -e "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+if [ "$1" = "direct" ]; then
+    echo -e "🔧 模式: 直连服务（跳过 Gateway）"
+else
+    echo -e "🔧 模式: 通过 Gateway (:{{.Ports.Gateway}})"
+fi
+
+# 清理旧的临时 env
+rm -f /tmp/{{.ProjectName}}-test-env.sh
+
+# 按文件名排序执行所有测试脚本
+SCRIPTS=($(ls "$DIR"/[0-9]*.sh 2>/dev/null | sort))
+
+if [ ${#SCRIPTS[@]} -eq 0 ]; then
+    echo -e "${RED}未找到测试脚本 (匹配: $DIR/[0-9]*.sh)${NC}"
+    exit 1
+fi
+
+FAILED_COUNT=0
+
+for script in "${SCRIPTS[@]}"; do
+    set +e
+    bash "$script" "$@" 2>&1
+    EXIT_CODE=$?
+    set -e
+
+    if [ $EXIT_CODE -ne 0 ]; then
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+    fi
+done
+
+# 最终汇总
+echo ""
+echo -e "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║       测试完成                                      ║${NC}"
+echo -e "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+if [ $FAILED_COUNT -gt 0 ]; then
+    echo -e "${RED}⚠️  ${FAILED_COUNT} 个测试脚本执行失败${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✅ 全部测试通过${NC}"
+fi
+
+# 清理
+rm -f /tmp/{{.ProjectName}}-test-env.sh

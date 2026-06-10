@@ -1,0 +1,82 @@
+// Package engine 业务编排层。
+//
+// 定位：Handler → **Engine** → Service / Repository
+//
+// Engine 负责编排多个 service、repository、缓存、分布式锁，
+// 完成一个完整的业务用例（use case）。
+//
+// 什么时候用 Engine vs Service？
+//   - Service：单一职责的原子操作（查用户、发邮件、签 JWT）
+//   - Engine：跨多个 service 的编排流程（注册 = 校验 + 建用户 + 发令牌 + 初始化配额）
+//
+// 命名约定：一个业务域一个 engine 文件，如 auth_engine.go、order_engine.go。
+package engine
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+
+	"{{.GoModulePath}}/backend-api/internal/repository"
+	"{{.GoModulePath}}/backend-api/internal/service"
+)
+
+// ExampleEngine 示例引擎，展示 Engine 层的编排模式。
+//
+// TODO: 用你的业务引擎替换此文件。常见的 engine 有：
+//   - AuthEngine：验证码 → 查找/注册用户 → 签发令牌
+//   - OrderEngine：校验库存 → 分布式锁 → 扣减 → 创建订单
+//   - PayEngine：创建支付单 → 回调核销 → 发放权益
+type ExampleEngine struct {
+	userSvc  service.UserService
+	userRepo repository.UserRepository
+	// TODO: 注入更多依赖，如 lockService、cacheService、externalClient 等
+}
+
+// NewExampleEngine 构造函数。依赖通过 bootstrap.go 注入。
+func NewExampleEngine(
+	userSvc service.UserService,
+	userRepo repository.UserRepository,
+) *ExampleEngine {
+	return &ExampleEngine{
+		userSvc:  userSvc,
+		userRepo: userRepo,
+	}
+}
+
+// RegisterUser 示例编排流程：校验 → 创建 → 后置处理。
+//
+// 这是一个典型的 Engine 方法：它编排了多个步骤，任何一步失败都要妥善处理。
+// 真实业务中，这里会加入分布式锁、配额初始化、通知等逻辑。
+func (e *ExampleEngine) RegisterUser(ctx context.Context, email, nickname string) (*RegisterResult, error) {
+	// 1. 前置校验（可调用多个 service）
+	existing, err := e.userRepo.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("query user: %w", err)
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("email already registered")
+	}
+
+	// 2. 核心操作
+	// 真实场景：这里可能需要 lock.Acquire() 做分布式锁
+	user, err := e.userSvc.CreateUser(ctx, email, nickname)
+	if err != nil {
+		return nil, fmt.Errorf("create user: %w", err)
+	}
+
+	// 3. 后置处理（异步/尽力而为）
+	// 真实场景：初始化配额、发欢迎邮件、记审计日志等
+	slog.Info("user registered", "uuid", user.UUID, "email", email)
+
+	return &RegisterResult{
+		UserUUID: user.UUID,
+		Email:    email,
+	}, nil
+}
+
+// RegisterResult 注册结果。
+type RegisterResult struct {
+	UserUUID string `json:"userUUID"`
+	Email    string `json:"email"`
+}

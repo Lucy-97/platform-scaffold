@@ -1,21 +1,26 @@
-// Package service 业务逻辑层。
+// Package service 业务逻辑层（原子服务）。
 //
-// 职责：编排 repository、cache、外部服务调用；不直接处理 HTTP 请求/响应。
+// 定位：Handler / Engine → **Service** → Repository
+//
+// Service 负责单一职责的原子操作（查用户、签 JWT、发邮件）。
+// 复杂的多步编排请放到 engine 层。
 package service
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
 	"{{.GoModulePath}}/backend-api/internal/model"
 	"{{.GoModulePath}}/backend-api/internal/repository"
 )
 
-// UserService 用户业务服务。
+// UserService 用户原子服务。
 type UserService interface {
 	GetByUUID(ctx context.Context, uuid string) (*model.User, error)
+	CreateUser(ctx context.Context, email, nickname string) (*model.User, error)
 }
 
 type userService struct {
@@ -34,4 +39,17 @@ func (s *userService) GetByUUID(ctx context.Context, uuid string) (*model.User, 
 		return nil, fmt.Errorf("uuid required")
 	}
 	return s.repo.FindByUUID(ctx, uuid)
+}
+
+// CreateUser 创建用户（原子操作，不含编排逻辑）。
+func (s *userService) CreateUser(ctx context.Context, email, nickname string) (*model.User, error) {
+	u := &model.User{
+		UUID:     uuid.New().String(),
+		Email:    email,
+		Nickname: nickname,
+	}
+	if err := s.repo.Create(ctx, u); err != nil {
+		return nil, err
+	}
+	return u, nil
 }

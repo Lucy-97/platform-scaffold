@@ -1,0 +1,137 @@
+#!/bin/bash
+# =============================================================================
+# 集成测试公共函数库
+# 所有子脚本通过 source 加载本文件
+# =============================================================================
+
+# ── 配置 ──
+INTERNAL_SECRET="${INTERNAL_SECRET:-dev-internal-secret}"
+GATEWAY_PORT="{{.Ports.Gateway}}"
+API_PORT="{{.Ports.API}}"
+{{- if .Features.AIEngine }}
+AI_PORT="{{.Ports.AIEngine}}"
+{{- end }}
+ENV_FILE="/tmp/{{.ProjectName}}-test-env.sh"
+
+if [ "$1" = "direct" ] || [ "$TEST_MODE" = "direct" ]; then
+    export TEST_MODE="direct"
+    BASE_URL="http://localhost:${API_PORT}"
+else
+    BASE_URL="${BASE_URL:-http://localhost:${GATEWAY_PORT}}"
+fi
+
+INTERNAL_URL="http://localhost:${API_PORT}"
+
+# ── 计数器 ──
+PASS=${PASS:-0}
+FAIL=${FAIL:-0}
+SKIP=${SKIP:-0}
+
+# ── 颜色 ──
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# ── 工具函数 ──
+ok() {
+    PASS=$((PASS+1))
+    echo -e "  ${GREEN}✅ $1${NC}"
+}
+
+fail() {
+    FAIL=$((FAIL+1))
+    echo -e "  ${RED}❌ $1${NC}"
+    echo -e "     响应: $(echo "$2" | head -c 300)"
+}
+
+skip() {
+    SKIP=$((SKIP+1))
+    echo -e "  ${YELLOW}⏭️  $1${NC}"
+}
+
+section() {
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  $1${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+# 检查 JSON 响应 code 字段
+check_code() {
+    local resp="$1"
+    local expected="$2"
+    local desc="$3"
+    local actual
+    actual=$(echo "$resp" | python3 -c "import sys,json;print(str(json.load(sys.stdin).get('code','')))" 2>/dev/null || echo "PARSE_ERROR")
+    if [ "$actual" = "$expected" ]; then
+        ok "$desc (code=$actual)"
+    else
+        fail "$desc (expected code=$expected, got=$actual)" "$resp"
+    fi
+}
+
+# 检查 HTTP 状态码
+check_http() {
+    local status="$1"
+    local expected="$2"
+    local desc="$3"
+    if [ "$status" = "$expected" ]; then
+        ok "$desc (HTTP $status)"
+    else
+        fail "$desc (expected HTTP $expected, got $status)" ""
+    fi
+}
+
+# JSON 字段包含检查
+assert_contains() {
+    local label="$1" body="$2" expected="$3"
+    if echo "$body" | grep -q "$expected"; then
+        ok "$label"
+    else
+        fail "$label (expected to contain '$expected')" "$body"
+    fi
+}
+
+# 带鉴权的 curl helper
+auth_curl() {
+    local method="$1"
+    local url="$2"
+    shift 2
+    curl -s -X "$method" "$url" \
+        -H "X-Internal-Secret: $INTERNAL_SECRET" \
+        -H "X-User-UUID: ${USER_UUID:-}" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN:-}" \
+        "$@"
+}
+
+# ── Token 持久化 ──
+save_env() {
+    cat > "$ENV_FILE" <<EOF
+export ACCESS_TOKEN="$ACCESS_TOKEN"
+export USER_UUID="$USER_UUID"
+export TEST_EMAIL="$TEST_EMAIL"
+EOF
+}
+
+load_env() {
+    if [ -f "$ENV_FILE" ]; then
+        source "$ENV_FILE"
+        return 0
+    fi
+    return 1
+}
+
+# 输出测试汇总
+print_summary() {
+    local label="${1:-本模块}"
+    echo ""
+    echo -e "  ${GREEN}通过: $PASS${NC}  ${RED}失败: $FAIL${NC}  ${YELLOW}跳过: $SKIP${NC}"
+    if [ $FAIL -gt 0 ]; then
+        echo -e "  ${RED}⚠️  $label 有 $FAIL 个测试失败${NC}"
+    fi
+}
+
+# 修复 PATH
+export PATH=$PATH:/usr/local/bin:/opt/homebrew/bin:/Applications/Docker.app/Contents/Resources/bin

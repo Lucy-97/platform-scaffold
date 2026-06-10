@@ -1,0 +1,10 @@
+-- 基线迁移（空文件）。
+--
+-- init.sql 是初始化全量表结构。
+-- 后续所有表结构变更请新建迁移文件，命名格式：YYYYMMDD-描述.sql
+-- 示例：
+--   20260610-add-orders-table.sql
+--   20260715-alter-users-add-phone.sql
+--
+-- 执行方式：
+--   bash deploy/local/db-apply.sh database/migrations/20260610-add-orders-table.sql

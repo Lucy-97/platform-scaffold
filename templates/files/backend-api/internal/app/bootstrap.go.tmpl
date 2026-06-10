@@ -1,6 +1,6 @@
 // Package app 负责装配整个 API 服务的依赖图。
 //
-// 装配顺序：config → DB → Redis → Repository → Service → Handler → Router
+// 装配顺序：config → DB → Redis → Repository → Service → Engine → Handler → Router
 package app
 
 import (
@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	"{{.GoModulePath}}/backend-api/internal/config"
+	"{{.GoModulePath}}/backend-api/internal/engine"
 	"{{.GoModulePath}}/backend-api/internal/handler"
 	"{{.GoModulePath}}/backend-api/internal/repository"
 	"{{.GoModulePath}}/backend-api/internal/router"
@@ -75,9 +76,12 @@ func Bootstrap() (*gin.Engine, *Deps, error) {
 	// ─── Service ───
 	userSvc := service.NewUserService(userRepo, rdb)
 
+	// ─── Engine ───
+	exampleEg := engine.NewExampleEngine(userSvc, userRepo)
+
 	// ─── Handler ───
 	handlers := &handler.Set{
-		User: handler.NewUserHandler(userSvc),
+		User: handler.NewUserHandler(userSvc, exampleEg),
 	}
 
 	// ─── Gin ───

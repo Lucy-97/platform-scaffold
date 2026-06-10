@@ -1,7 +1,8 @@
 // {{.Brand}} API 入口。
 //
 // 设计要点：
-//   - 三层架构：Handler → Service → Repository
+//   - 四层架构：Handler → Engine → Service → Repository
+//   - Engine 负责多步编排（注册、支付等），Service 负责原子操作
 //   - 中间件：Recovery → CORS(信任 gateway) → RequestID → Metrics → InternalAuth
 //   - InternalAuth 通过 X-Internal-Secret 校验请求来自 gateway
 //   - 用户身份从 X-User-UUID 头读取（由 gateway 注入）

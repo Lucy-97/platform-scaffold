@@ -1,0 +1,41 @@
+#!/bin/bash
+# =============================================================================
+# 01-health.sh — 健康检查与基础连通性测试
+# 验证各服务的 /health 端点是否正常
+# =============================================================================
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$DIR/lib/common.sh"
+
+section "1. Health — 服务健康检查"
+
+# 1.1 Gateway 健康检查
+echo "  🔍 检查 Gateway..."
+RESP=$(curl -s "http://localhost:{{.Ports.Gateway}}/health" 2>/dev/null || echo '{"status":"error"}')
+assert_contains "Gateway /health" "$RESP" "ok"
+
+# 1.2 API 健康检查（直连）
+echo "  🔍 检查 API (直连 :{{.Ports.API}})..."
+RESP=$(curl -s "http://localhost:{{.Ports.API}}/health" 2>/dev/null || echo '{"status":"error"}')
+assert_contains "API /health" "$RESP" "ok"
+
+{{- if .Features.AIEngine }}
+
+# 1.3 AI Engine 健康检查
+echo "  🔍 检查 AI Engine (直连 :{{.Ports.AIEngine}})..."
+RESP=$(curl -s "http://localhost:{{.Ports.AIEngine}}/health" 2>/dev/null || echo '{"status":"error"}')
+assert_contains "AI Engine /health" "$RESP" "ok"
+{{- end }}
+
+# 1.4 Gateway 转发测试（通过 Gateway 访问 API）
+echo "  🔍 检查 Gateway → API 转发..."
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:{{.Ports.Gateway}}/api/v1/users/me" \
+    -H "X-Internal-Secret: ${INTERNAL_SECRET}" 2>/dev/null || echo "000")
+# 期望 401（因为没有带 X-User-UUID），说明转发成功、鉴权生效
+if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "200" ]; then
+    ok "Gateway → API 转发正常 (HTTP $HTTP_CODE)"
+else
+    fail "Gateway → API 转发异常 (HTTP $HTTP_CODE)" ""
+fi
+
+print_summary "Health"
