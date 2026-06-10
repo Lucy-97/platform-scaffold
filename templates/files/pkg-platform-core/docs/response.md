@@ -22,7 +22,7 @@ response.OK(c, user)                    // {"code":"200","msg":"OK","data":{...}
 response.OKPage(c, list, totalSize)     // {"code":"200","msg":"OK","data":{"data":[...],"totalSize":42}}
 
 // 业务错误 (HTTP 400)
-response.BadRequest(c, "104001", "Insufficient points.")
+response.BadRequest(c, "110001", "Order not found.")
 
 // 鉴权 (HTTP 401)
 response.Unauthorized(c, "100001", "Missing authorization header")
@@ -48,7 +48,7 @@ response.Err(c, http.StatusConflict, "110001", "Order conflict")
 | 层 | 谁用 | 示例 |
 |----|------|------|
 | HTTP 状态码 | 基础设施层（网关/限流/中间件） | 401 未登录、403 过期、429 限流、500 panic |
-| 业务错误码 (code) | 业务层（handler/service） | `104001` 积分不足、`110002` 订单已取消 |
+| 业务错误码 (code) | 业务层（handler/service） | `110001` 订单不存在、`110002` 订单已取消 |
 
 **规则**：HTTP 200 + code 非 `"200"` = 业务错误；HTTP 4xx/5xx = 基础设施错误。
 

@@ -9,11 +9,11 @@ func TestErrorCodeError(t *testing.T) {
 }
 
 func TestWrap(t *testing.T) {
-	w := ErrPointInsufficient.Wrap("balance=0")
-	if w.Code != "104001" {
+	w := ErrTryLockFailed.Wrap("key=LOCK:ORDER:uuid-123")
+	if w.Code != "105002" {
 		t.Fatalf("code mismatch: %s", w.Code)
 	}
-	if w.Error() != "[104001] Insufficient points. (balance=0)" {
+	if w.Error() != "[105002] Failed to acquire lock, please try again later. (key=LOCK:ORDER:uuid-123)" {
 		t.Fatalf("wrap msg mismatch: %s", w.Error())
 	}
 }

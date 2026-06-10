@@ -2,7 +2,7 @@
 //
 // 用法：
 //
-//	l, err := lock.Acquire(ctx, rdb, "LOCK:USER_POINT:"+uuid, 30*time.Second)
+//	l, err := lock.Acquire(ctx, rdb, "LOCK:ORDER_PAY:"+orderID, 30*time.Second)
 //	if err != nil || l == nil {
 //	    return errcode.ErrTryLockFailed
 //	}

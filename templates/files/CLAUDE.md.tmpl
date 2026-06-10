@@ -37,7 +37,7 @@
 | `/api/auth/*`, `/api/public/*` | `backend-api` | 公开路径，无需 JWT |
 | `/api/v1/*` (其他) | `backend-api` | 需 JWT；Gateway 注入 `X-User-UUID` 头 |
 {{- if .Features.AIEngine }}
-| `/api/v1/chat/*`, `/api/v1/ai/*` | `backend-ai-engine` | 需 JWT；同样注入用户头 |
+| `/api/v1/ai/*` | `backend-ai-engine` | 需 JWT；同样注入用户头 |
 {{- end }}
 | `/health`, `/metrics` | Gateway 自身 | 不转发 |
 

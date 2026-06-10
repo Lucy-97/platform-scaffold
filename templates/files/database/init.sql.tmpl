@@ -1,6 +1,6 @@
 -- {{.Brand}} 数据库初始化
 --
--- 包含通用基础表：user / user_point_record / user_provider /
+-- 包含通用基础表：user / user_provider /
 -- system_config / system_prompts / sys_admin
 -- 业务表请按需追加在文件末尾。
 
@@ -35,21 +35,19 @@ CREATE TABLE IF NOT EXISTS `{{.ProjectName}}`.`user`
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户主表';
 
 -- =====================================================
--- user_point_record：用户积分流水
+-- TODO: 在此追加业务表，以下为示例模板：
 -- =====================================================
-CREATE TABLE IF NOT EXISTS `{{.ProjectName}}`.`user_point_record`
-(
-    `id`              BIGINT UNSIGNED AUTO_INCREMENT,
-    `user_uuid`       VARCHAR(64)     NOT NULL                         COMMENT '用户唯一标识',
-    `change_amount`   DECIMAL(10,4)   NOT NULL                         COMMENT '变动额度',
-    `current_balance` DECIMAL(10,4)   NOT NULL                         COMMENT '变动后余额',
-    `type`            VARCHAR(32)     NOT NULL                         COMMENT 'topup / consume / refund',
-    `task_id_or_ref`  VARCHAR(128)             DEFAULT NULL            COMMENT '关联任务/单号',
-    `gmt_create`      TIMESTAMP                DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    INDEX `idx_user_uuid` (`user_uuid`),
-    INDEX `idx_type` (`type`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户积分流水';
+-- CREATE TABLE IF NOT EXISTS `{{.ProjectName}}`.`example_record`
+-- (
+--     `id`              BIGINT UNSIGNED AUTO_INCREMENT,
+--     `user_uuid`       VARCHAR(64)     NOT NULL                         COMMENT '用户唯一标识',
+--     `amount`          DECIMAL(10,4)   NOT NULL                         COMMENT '变动额度',
+--     `type`            VARCHAR(32)     NOT NULL                         COMMENT '操作类型',
+--     `ref_id`          VARCHAR(128)             DEFAULT NULL            COMMENT '关联单号',
+--     `gmt_create`      TIMESTAMP                DEFAULT CURRENT_TIMESTAMP,
+--     PRIMARY KEY (`id`),
+--     INDEX `idx_user_uuid` (`user_uuid`)
+-- ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '示例业务表';
 
 -- =====================================================
 -- user_provider：第三方登录绑定

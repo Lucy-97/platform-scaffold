@@ -11,30 +11,31 @@
 | 系统层 | `000xxx` | JWT / 鉴权基础设施 / 内部错误 |
 | 鉴权与注册 | `100xxx` | 登录 / 注册 / 验证码 |
 | 文件与资源 | `103xxx` | 上传 / 下载 |
-| 支付与积分 | `104xxx` | 扣费 / 充值 |
-| AI 与外部服务 | `105xxx` | LLM / 第三方 API |
+| 支付与计费 | `104xxx` | 扣费 / 充值 / 订阅 |
+| 基础设施 | `105xxx` | 外部服务 / 分布式锁 |
 | 业务预留 | `11xxxx` ~ `99xxxx` | 新业务模块自取 |
 
 ## API
 
 ```go
 // 注册一个新错误码（通常在包级 var 集中声明）
-e := errcode.New("104001", "Insufficient points.")
+e := errcode.New("110001", "Order not found.")
 
 // 实现 error 接口
-fmt.Println(e.Error()) // [104001] Insufficient points.
+fmt.Println(e.Error()) // [110001] Order not found.
 
 // 携带运行时上下文（不修改 code/msg）
-wrapped := e.Wrap("user_uuid=abc, cost=100, balance=50")
-fmt.Println(wrapped.Error()) // [104001] Insufficient points. (user_uuid=abc, cost=100, balance=50)
+wrapped := e.Wrap("order_id=abc-123")
+fmt.Println(wrapped.Error()) // [110001] Order not found. (order_id=abc-123)
 ```
 
 ## 与 response 包配合
 
 ```go
 // handler 层
-func (h *Handler) ConsumePoint(c *gin.Context) {
-    if err := h.svc.Consume(...); err != nil {
+func (h *Handler) GetOrder(c *gin.Context) {
+    order, err := h.svc.FindOrder(...)
+    if err != nil {
         var ec errcode.ErrorCode
         if errors.As(err, &ec) {
             response.BadRequest(c, ec.Code, ec.Msg)
@@ -43,7 +44,7 @@ func (h *Handler) ConsumePoint(c *gin.Context) {
         response.InternalError(c, "unknown error")
         return
     }
-    response.OK(c, nil)
+    response.OK(c, order)
 }
 ```
 

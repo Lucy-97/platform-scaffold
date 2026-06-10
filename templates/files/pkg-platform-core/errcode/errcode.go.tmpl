@@ -73,11 +73,14 @@ var (
 	ErrFileNotExists  = New("103001", "File does not exist.")
 	ErrFileUploadFail = New("103004", "File upload failed.")
 
-	// 支付与积分 104xxx
-	ErrPointInsufficient = New("104001", "Insufficient points.")
-	ErrPointException    = New("104002", "An exception occurred with the points.")
+	// 通用基础设施 105xxx
+	ErrExternalServiceFailed = New("105001", "External service request failed. Please try again later.")
+	ErrTryLockFailed         = New("105002", "Failed to acquire lock, please try again later.")
 
-	// AI 与外部服务 105xxx
-	ErrChatAIFailed  = New("105006", "Request to AI service failed. Please try again later.")
-	ErrTryLockFailed = New("105017", "Failed to acquire lock, please try again later.")
+	// TODO: 按你的业务域追加错误码，建议分段：
+	//   104xxx — 支付与计费
+	//   11xxxx ~ 99xxxx — 各业务模块
+	// 示例：
+	//   ErrOrderNotFound  = New("110001", "Order not found.")
+	//   ErrOrderCancelled = New("110002", "Order has been cancelled.")
 )
