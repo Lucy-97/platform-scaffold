@@ -1,0 +1,57 @@
+# ──────────────────────────────────────────────────────────────────────
+# AgentCore AgentCore — 沙箱容器镜像（多语言运行时）
+# ──────────────────────────────────────────────────────────────────────
+# 用途：exec_code 工具的 Docker 隔离后端。
+# 构建：docker build -f Dockerfile.sandbox -t agent-sandbox:latest .
+#
+# 运行时能力：Python 3.10 + Node.js 20.x + 常用系统工具
+# 依赖管理：通过 Docker Named Volume (agent_sandbox_deps) 动态注入
+#
+# 安全特性（由 sandbox_executor.py 的 docker run 参数控制）：
+#   --network=none    禁止网络访问
+#   --memory=128m     内存上限
+#   --cpus=0.5        CPU 限制
+#   --read-only       只读根文件系统
+#   --user sandbox    非 root 用户
+# ──────────────────────────────────────────────────────────────────────
+
+FROM python:3.10-slim
+
+# ── 系统依赖 ──────────────────────────────────────────────────────────
+# curl: OpenClaw skills 广泛使用（weather, xurl 等）
+# ffmpeg: 音视频处理类 skills（openai-whisper, video-frames 等）
+# Node.js 20.x: ljg-skills 生态（ljg-card 等使用 Node 脚本生成 PNG）
+# 其余: playwright 等 headless browser 的系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ffmpeg \
+    # Node.js 20.x 官方源
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    # Playwright 系统依赖（Chromium headless 所需的共享库）
+    && apt-get install -y --no-install-recommends \
+        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+        libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
+        libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+        libcairo2 libasound2 libxshmfence1 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ── 创建非 root 用户 ─────────────────────────────────────────────────
+RUN groupadd -r sandbox && useradd -r -g sandbox -d /home/sandbox -s /bin/bash sandbox
+
+# ── 基础 Python 依赖（高频使用，预装减少首次延迟）─────────────────────
+RUN pip install --no-cache-dir \
+    python-docx \
+    pyyaml \
+    && rm -rf /root/.cache
+
+# ── 目录结构 ──────────────────────────────────────────────────────────
+# /workspace      — 代码只读挂载点
+# /output         — 输出目录读写挂载点
+# /skills         — Skill 脚本只读挂载点
+# /sandbox_deps   — 动态依赖 Named Volume 挂载点（运行时 :ro）
+RUN mkdir -p /workspace /output /skills /sandbox_deps \
+    && chown sandbox:sandbox /workspace /output /skills /sandbox_deps
+
+WORKDIR /workspace
+USER sandbox

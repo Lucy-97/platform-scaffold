@@ -1,0 +1,50 @@
+{
+  "main": "./src/index.js",
+  "compatibility_date": "2025-09-10",
+  "name": "{{.ProjectName}}-bucket-proxy",
+  "workers_dev": false,
+  "vars": {
+    "JWT_SECRET": ""
+  },
+  "r2_buckets": [
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "{{.ProjectName}}-prod"
+    }
+  ],
+  "env": {
+    "test": {
+      "vars": {
+        "JWT_SECRET": "42pGp3hxlsU7JfbWmzMsNHRd7-91ayZO1grEIva7H4o"
+      },
+      "r2_buckets": [
+        {
+          "binding": "R2_BUCKET",
+          "bucket_name": "{{.ProjectName}}-test"
+        }
+      ]
+    },
+    "dev": {
+      "vars": {
+        "JWT_SECRET": "r6iei6x7r-AZdhq9xT5mng_Ptp28T9kgzCHgvjzhiHM"
+      },
+      "r2_buckets": [
+        {
+          "binding": "R2_BUCKET",
+          "bucket_name": "{{.ProjectName}}-dev"
+        }
+      ]
+    },
+    "stable": {
+      "vars": {
+        "JWT_SECRET": "B4xiHJxGqj7cbz_ohHAJHzV8sO5zVTHkV2Qk1sAC-pM"
+      },
+      "r2_buckets": [
+        {
+          "binding": "R2_BUCKET",
+          "bucket_name": "{{.ProjectName}}-stable"
+        }
+      ]
+    }
+  }
+}

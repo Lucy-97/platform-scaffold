@@ -75,8 +75,8 @@ func initCmd() *cobra.Command {
 			fmt.Println()
 			fmt.Println("Next steps:")
 			fmt.Printf("  cd %s\n", outputDir)
-			fmt.Println("  cp deploy-local/.env.example deploy-local/.env")
-			fmt.Println("  ./deploy-local/start.sh start")
+			fmt.Println("  cp deploy/local/.env.example deploy/local/.env")
+			fmt.Println("  ./deploy/local/start.sh start")
 			return nil
 		},
 	}

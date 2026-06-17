@@ -1,0 +1,20 @@
+# {{.ProjectName}} Agent Skills
+
+本目录用于存放 AI Agent 的「技能（Skills）」。
+AI Engine (基于 `agent-core`) 会在启动时扫描此目录并懒加载所有的技能。
+
+## 目录结构
+每个技能应该是一个独立的文件夹，内部包含一个 `SKILL.md` 文件：
+
+```
+skills/
+├── example_skill/
+│   └── SKILL.md
+├── another_skill/
+│   ├── SKILL.md
+│   └── scripts/
+└── README.md
+```
+
+## SKILL.md 规范
+请参考 `example_skill/SKILL.md` 的前置配置（YAML Frontmatter）和编写规范。

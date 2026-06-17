@@ -1,0 +1,95 @@
+import { jwtVerify, base64url } from 'jose';
+
+// Worker 全局函数，用于校验 AT 的有效性。
+const validateAT = async (token, env) => {
+    if (!token) {
+        return false;
+    }
+
+    const secretKey = base64url.decode(env.JWT_SECRET);
+
+    try {
+        await jwtVerify(token, secretKey);
+        return true;
+    } catch (error) {
+        console.error('JWT validation failed:', error.message);
+        return false;
+    }
+};
+
+// Worker 全局函数，从 Cookie 中提取 Refresh Token。
+const getRTFromCookie = (request) => {
+    const cookieHeader = request.headers.get('Cookie');
+    if (!cookieHeader) {
+        return null;
+    }
+
+    const cookies = cookieHeader.split(';').map(c => c.trim().split('='));
+    for (const [name, value] of cookies) {
+        if (name === 'RT') {
+            return value;
+        }
+    }
+
+    return null;
+};
+
+// Worker 全局函数，用于从 R2 存储桶获取并返回对象。
+const getAndReturnObject = async (key, env) => {
+    if (!key) {
+        return new Response('Not Found', { status: 404 });
+    }
+
+    try {
+        const object = await env.R2_BUCKET.get(key);
+
+        if (object === null) {
+            return new Response('Not Found', { status: 404 });
+        }
+
+        const headers = new Headers();
+        object.writeHttpMetadata(headers);
+        headers.set('ETag', object.httpEtag);
+
+        // 设置 CDN 缓存头，遵循最佳实践
+        headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+
+        return new Response(object.body, { headers });
+    } catch (error) {
+        return new Response('Error fetching from R2: ' + error.message, { status: 500 });
+    }
+};
+
+
+export default {
+    async fetch(request, env, ctx) {
+        const url = new URL(request.url);
+        const key = url.pathname.slice(1);
+
+        // 1. 根据 key 路径进行区分
+        if (key.startsWith('public/')) {
+            // 路径为公开资源，跳过认证，直接返回 R2 数据
+            return getAndReturnObject(key, env);
+
+        } else {
+            // 2. 对于所有其他路径（包括 users），进行认证校验
+            const authHeader = request.headers.get('Authorization');
+            const at = authHeader ? authHeader.replace('Bearer ', '') : null;
+            const rt = getRTFromCookie(request);
+
+            const isATValid = at && await validateAT(at, env);
+
+            if (isATValid) {
+                // 认证通过，返回 R2 数据
+                return getAndReturnObject(key, env);
+            } else {
+                // 认证失败，根据 RT 状态返回错误
+                if (rt) {
+                    return new Response('Forbidden: Access Token invalid or expired.', { status: 403 });
+                } else {
+                    return new Response('Unauthorized: No valid tokens.', { status: 401 });
+                }
+            }
+        }
+    },
+};

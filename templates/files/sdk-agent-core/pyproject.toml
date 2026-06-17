@@ -1,0 +1,25 @@
+[project]
+name = "agent-core"
+version = "0.1.0"
+description = "通用 AI Agent 运行时框架 — 中间件链、记忆管理、GraphRAG、沙箱执行、评估闭环"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "XDD-AI"}]
+
+dependencies = [
+    "loguru>=0.7.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+neo4j = ["neo4j>=5.0"]
+feishu = ["httpx>=0.25"]
+all = ["neo4j>=5.0", "httpx>=0.25"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_core"]
