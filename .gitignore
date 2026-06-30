@@ -4,6 +4,7 @@
 
 ### go exe
 backend-api/main
+/platform
 
 ### BAK FILES ###
 *.bak

@@ -10,13 +10,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${1:-$(mktemp -d)/smoke-demo}"
+BIN="$(mktemp -d)/platform"   # 构建到临时目录，避免污染仓库工作区
 
 echo "==> build CLI"
-go build -o "$ROOT/platform" "$ROOT/cmd/platform"
+go build -o "$BIN" "$ROOT/cmd/platform"
 
 echo "==> generate -> $OUT"
 rm -rf "$OUT"
-"$ROOT/platform" init smoke-demo --yes -o "$OUT"
+"$BIN" init smoke-demo --yes -o "$OUT"
 
 echo "==> assert no junk leaked"
 if find "$OUT" \( -name .DS_Store -o -path '*.idea*' -o -path '*.wrangler*' -o -name '*.iml' \) | grep -q .; then
