@@ -69,22 +69,28 @@ open http://localhost:{{.Ports.Admin}}
 {{- if .Features.Admin }}
 ├── frontend-admin/       # Vite + React 19 管理后台
 {{- end }}
-{{- if .UseCoreLib }}
-├── pkg-platform-core/    # 通用组件库（errcode/lock/cache/crypto/middleware/dynconfig）
+{{- if .Features.BucketProxy }}
+├── bucketproxy/          # Cloudflare R2 反向代理 Worker
 {{- end }}
 ├── deploy/
 │   ├── local/            # docker-compose + start.sh
 │   └── k3s/              # K3s manifests + 部署脚本
-└── database/init.sql     # 表结构
+├── docs/                 # brd/prd/tech/ops/ui/tests 文档骨架
+├── skills/               # Agent skill 约定（example_skill）
+├── .github/workflows/    # CI
+└── database/init.sql     # 表结构（含 system_config）
 ```
+
+> 通用组件（errcode / crypto / dynconfig / cache / lock / middleware / response）内聚在
+> `backend-api/internal/` 与 `backend-gateway/internal/`，不再有独立的共享库模块。
 
 ## 核心约定
 
 - **写权限矩阵**：所有写操作走 Go API；Python AI Engine 只读，写操作通过内网调 Go API。
 - **服务间鉴权**：Gateway → API/AI 内网调用必须带 `X-Internal-Secret` 头（INTERNAL_API_SECRET）。
 - **JWT 在网关**：业务 API 不解析 JWT，由 Gateway 解析后用 `X-User-UUID` 头转发。
-- **动态配置**：运行时可调的参数走 `system_config` 表（敏感凭据 AES-256-GCM 加密），通过 [pkg-platform-core/dynconfig](file:///pkg-platform-core/dynconfig) 加载。
-- **错误码**：使用 6 位业务码（[pkg-platform-core/errcode](file:///pkg-platform-core/errcode)）；HTTP 状态用于鉴权/限流等基础设施层。
+- **动态配置**：运行时可调的参数走 `system_config` 表（敏感凭据 AES-256-GCM 加密），通过 `backend-api/internal/dynconfig` 加载。
+- **错误码**：使用 6 位业务码（`backend-api/internal/errcode`）；HTTP 状态用于鉴权/限流等基础设施层。
 
 详细约定见 [CLAUDE.md](file:///CLAUDE.md)。
 

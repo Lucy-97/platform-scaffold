@@ -1,0 +1,113 @@
+package middleware
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/redis/go-redis/v9"
+
+	"{{.GoModulePath}}/backend-gateway/internal/response"
+)
+
+// ---------------- RateLimit ----------------
+
+// RedisRateLimiter Redis 固定窗口限流器，多副本安全（共享 Redis 计数）。
+type RedisRateLimiter struct {
+	rdb    *redis.Client
+	rate   int
+	window time.Duration
+}
+
+// NewRedisRateLimiter 创建限流器。rate=每窗口最大请求数，window=窗口大小（如 1 分钟）。
+func NewRedisRateLimiter(rdb *redis.Client, rate int, window time.Duration) *RedisRateLimiter {
+	return &RedisRateLimiter{rdb: rdb, rate: rate, window: window}
+}
+
+// RateLimit 根据登录用户 UUID 或 IP 限流，Redis 错误时 fail-open。
+func RateLimit(rl *RedisRateLimiter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if rl == nil || rl.rdb == nil {
+			c.Next()
+			return
+		}
+
+		identifier := c.GetString("userUUID")
+		prefix := "USER"
+		if identifier == "" {
+			identifier = c.ClientIP()
+			prefix = "IP"
+		}
+
+		slot := time.Now().Unix() / int64(rl.window.Seconds())
+		key := fmt.Sprintf("RATE:%s:%s:%d", prefix, identifier, slot)
+		ctx := context.Background()
+
+		count, err := rl.rdb.Incr(ctx, key).Result()
+		if err != nil {
+			c.Next()
+			return
+		}
+		if count == 1 {
+			rl.rdb.Expire(ctx, key, rl.window+time.Second)
+		}
+		if count > int64(rl.rate) {
+			response.Err(c, http.StatusTooManyRequests, "000006", "Too many requests, please try again later")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// ---------------- Prometheus Metrics ----------------
+
+var (
+	httpRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total number of HTTP requests by method, path, and status.",
+		},
+		[]string{"method", "path", "status"},
+	)
+
+	httpRequestDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "HTTP request latency distribution.",
+			Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		},
+		[]string{"method", "path"},
+	)
+
+	httpRequestsInFlight = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "http_requests_in_flight",
+			Help: "Current number of HTTP requests being processed.",
+		},
+	)
+)
+
+// PrometheusMetrics 记录 HTTP 请求指标。
+func PrometheusMetrics() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.FullPath()
+		if path == "" {
+			path = "unmatched"
+		}
+		httpRequestsInFlight.Inc()
+		start := time.Now()
+
+		c.Next()
+
+		httpRequestsInFlight.Dec()
+		status := strconv.Itoa(c.Writer.Status())
+		httpRequestsTotal.WithLabelValues(c.Request.Method, path, status).Inc()
+		httpRequestDuration.WithLabelValues(c.Request.Method, path).Observe(time.Since(start).Seconds())
+	}
+}

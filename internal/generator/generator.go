@@ -59,6 +59,11 @@ func (g *Generator) Run() (int, error) {
 			return nil
 		}
 
+		// 防御：永不把本地/IDE/OS 产物写进生成项目（即便误入模板树）。
+		if isJunk(rel) {
+			return nil
+		}
+
 		// 渲染目标路径（路径本身可包含模板变量）
 		outRel, err := g.renderPath(rel)
 		if err != nil {
@@ -113,8 +118,27 @@ func (g *Generator) skip(path string) bool {
 	if !g.cfg.Features.Admin && hasPrefix(path, "frontend-admin") {
 		return true
 	}
-	if !g.cfg.UseCoreLib && hasPrefix(path, "pkg-platform-core") {
+	if !g.cfg.Features.BucketProxy && hasPrefix(path, "bucketproxy") {
 		return true
+	}
+	return false
+}
+
+// isJunk 判断某个相对路径是否为本地/IDE/OS 产物，不应进入生成项目。
+func isJunk(path string) bool {
+	path = filepath.ToSlash(path)
+	base := filepath.Base(path)
+	switch base {
+	case ".DS_Store", "Thumbs.db", "*.iml":
+		return true
+	}
+	if strings.HasSuffix(base, ".iml") {
+		return true
+	}
+	for _, seg := range strings.Split(path, "/") {
+		if seg == ".idea" || seg == ".wrangler" || seg == ".history" || seg == ".lh" {
+			return true
+		}
 	}
 	return false
 }

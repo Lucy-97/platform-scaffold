@@ -30,9 +30,6 @@ type ProjectConfig struct {
 	// Features 各模块的开关，false 时跳过对应模板。
 	Features Features
 
-	// UseCoreLib 是否引用同仓库的 pkg-platform-core 公共组件库。
-	UseCoreLib bool
-
 	// InitGit 生成完成后是否执行 git init。
 	InitGit bool
 
@@ -56,6 +53,8 @@ type Features struct {
 	AIEngine bool
 	Web      bool
 	Admin    bool
+	// BucketProxy 是否生成 Cloudflare R2 反向代理 Worker（bucketproxy/）。默认关闭。
+	BucketProxy bool
 }
 
 // Defaults 返回一个填好合理默认值的 ProjectConfig，用作交互式提问的初始值。
@@ -79,12 +78,12 @@ func Defaults(projectName string) ProjectConfig {
 			Redis:    6379,
 		},
 		Features: Features{
-			AIEngine: true,
-			Web:      true,
-			Admin:    true,
+			AIEngine:    true,
+			Web:         true,
+			Admin:       true,
+			BucketProxy: false,
 		},
-		UseCoreLib: true,
-		InitGit:    true,
+		InitGit: true,
 	}
 }
 

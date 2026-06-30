@@ -36,8 +36,8 @@ func AskProjectConfig(defaultName string, nonInteractive bool) (config.ProjectCo
 	if cfg.Features.Admin {
 		features = append(features, "admin")
 	}
-	if cfg.UseCoreLib {
-		features = append(features, "core-lib")
+	if cfg.Features.BucketProxy {
+		features = append(features, "bucketproxy")
 	}
 
 	form := huh.NewForm(
@@ -77,7 +77,7 @@ func AskProjectConfig(defaultName string, nonInteractive bool) (config.ProjectCo
 					huh.NewOption("ai-engine (Python FastAPI)", "ai-engine").Selected(cfg.Features.AIEngine),
 					huh.NewOption("web (Next.js)", "web").Selected(cfg.Features.Web),
 					huh.NewOption("admin (Vite+React)", "admin").Selected(cfg.Features.Admin),
-					huh.NewOption("core-lib (pkg-platform-core via replace)", "core-lib").Selected(cfg.UseCoreLib),
+					huh.NewOption("bucketproxy (Cloudflare R2 Worker)", "bucketproxy").Selected(cfg.Features.BucketProxy),
 				).
 				Value(&features),
 			huh.NewConfirm().
@@ -99,7 +99,7 @@ func AskProjectConfig(defaultName string, nonInteractive bool) (config.ProjectCo
 	cfg.Features.AIEngine = contains(features, "ai-engine")
 	cfg.Features.Web = contains(features, "web")
 	cfg.Features.Admin = contains(features, "admin")
-	cfg.UseCoreLib = contains(features, "core-lib")
+	cfg.Features.BucketProxy = contains(features, "bucketproxy")
 
 	return cfg, nil
 }

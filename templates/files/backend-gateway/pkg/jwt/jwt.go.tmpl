@@ -1,4 +1,4 @@
-// Package jwt 网关侧 JWT 管理器，实现 pkg-platform-core/middleware.JWTValidator 接口。
+// Package jwt 网关侧 JWT 管理器，实现 internal/middleware.JWTValidator 接口。
 package jwt
 
 import (
@@ -7,7 +7,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	pmw "{{.GoModulePath}}/pkg-platform-core/middleware"
+	pmw "{{.GoModulePath}}/backend-gateway/internal/middleware"
 )
 
 // ErrTokenExpired 用于上层区分过期与无效。
