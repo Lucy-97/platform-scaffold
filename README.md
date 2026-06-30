@@ -29,23 +29,27 @@ platform init my-app
 
 # 交互式问完会得到完整目录结构：
 # my-app/
-# ├── backend-gateway/      Go Gin 网关（JWT/限流/CORS/proxy）
-# ├── backend-api/          Go API（handler→service→repository）
-# ├── backend-ai-engine/    Python FastAPI（AI 编排，只读）
-# ├── frontend-web/         Next.js 15 App Router
-# ├── frontend-admin/       Vite + React 19 后台
-# ├── pkg-platform-core/    通用组件库（errcode/lock/cache/crypto/middleware）
+# ├── backend-gateway/      Go Gin 网关（JWT/限流/CORS/proxy + internal/{middleware,response}）
+# ├── backend-api/          Go API（handler→engine→service→repository
+# │                          + internal/{errcode,crypto,dynconfig,cache,lock,middleware,response,testutil}）
+# ├── backend-ai-engine/    Python FastAPI（AI 编排，只读）   [可选]
+# ├── frontend-web/         Next.js 15 App Router（src/lib 鉴权套件）   [可选]
+# ├── frontend-admin/       Vite + React 19 后台              [可选]
+# ├── bucketproxy/          Cloudflare R2 反向代理 Worker      [可选，默认关闭]
 # ├── deploy/local/         docker-compose + start.sh
 # ├── deploy/k3s/           K3s manifests + 部署脚本
-# ├── database/init.sql
-# ├── README.md / CLAUDE.md / .gitignore
-# └── .env.example
+# ├── docs/ skills/ .github/workflows/
+# ├── database/init.sql     （含 system_config）
+# └── README.md / CLAUDE.md / .gitignore
 
 cd my-app
 cp deploy/local/.env.example deploy/local/.env
 docker compose -f deploy/local/docker-compose-all.yaml up -d
 ./deploy/local/start.sh start
 ```
+
+> 通用组件不再是独立的共享 go module（曾经的 `pkg-platform-core` 已下线）。
+> 每个 Go 服务自带所需的 `internal/` 组件，彼此独立可编译、无 `replace` 指向。
 
 ## 项目内的核心约定（生成的项目会沿用）
 
@@ -65,6 +69,8 @@ platform-scaffold/
 │   ├── config/project.go           ProjectConfig 模板变量
 │   ├── prompt/                     huh 交互式输入
 │   └── generator/generator.go      embed.FS → 渲染 → 落盘
+├── internal/generator/generator_test.go  黄金路径自检（生成 → go build）
+├── scripts/smoke.sh                  本地一键自检
 ├── templates/
 │   ├── embed.go                    //go:embed all:files
 │   └── files/                      所有模板源
@@ -73,8 +79,9 @@ platform-scaffold/
 │       ├── backend-ai-engine/
 │       ├── frontend-web/
 │       ├── frontend-admin/
-│       ├── pkg-platform-core/
+│       ├── bucketproxy/
 │       ├── deploy/{local,k3s}/
+│       ├── docs/ skills/ .github/
 │       ├── database/init.sql.tmpl
 │       ├── README.md.tmpl
 │       ├── CLAUDE.md.tmpl
@@ -86,12 +93,13 @@ platform-scaffold/
 
 模板修改原则：
 
-1. **保持业务无关**。任何具体业务（drama / aigc）字眼不应出现在模板里。
+1. **保持业务无关**。任何具体业务（drama / aigc 等）字眼不应出现在模板里。
 2. **新增模板变量必须更新** [`internal/config/project.go`](internal/config/project.go) 的 `ProjectConfig`。
-3. **`.go` 文件必须存为 `.go.tmpl`**，避免 Go 工具链把它当本仓库的源码。同理 `.py` / `.tsx` / `.ts` 在涉及模板变量时统一加 `.tmpl` 后缀。
-4. **跨模块依赖通过接口**。`pkg-platform-core` 不允许 `import` 业务包；middleware/JWT 用接口（`JWTValidator`）解耦。
-5. **JSX 双大括号陷阱**：`style={{...}}` 与 Go template `{{}}` 冲突，改用 `const styleX = {...}` 变量绕开。
-6. **改完跑** `go build ./cmd/platform`，再 `./platform init demo-test` 试跑一遍。
+3. **`.go` 文件必须存为 `.go.tmpl`**，避免 Go 工具链把它当本仓库的源码。同理 `.py` / `.tsx` / `.ts` 在涉及模板变量时统一加 `.tmpl` 后缀（无模板变量的可保持原后缀，按原样复制）。
+4. **通用组件按服务内聚**。`internal/{errcode,crypto,...}` 不允许 `import` 业务包；gateway/api 跨服务解耦用接口（如 `middleware.JWTValidator`）。新增可选顶层目录时，记得在 `Features` + `generator.skip()` + prompt 里接好开关。
+5. **模板渲染陷阱**：`${{ }}`（GitHub Actions）与 `style={{...}}`（JSX）都会和 Go template `{{}}` 冲突——CI 用 `working-directory` 绕开 `${{ }}`，JSX 用 `const styleX = {...}` 变量绕开。
+6. **本地/IDE 产物**（`.DS_Store`/`.idea`/`.wrangler`/`*.iml`）会被 `generator` 的 `isJunk` denylist 拦掉，但仍不要提交进 `templates/`。
+7. **改完必须自检**：`go test ./...`（含生成 → `go build` 黄金路径），或 `bash scripts/smoke.sh` 跑全套（含前端 tsc）。
 
 ## License
 

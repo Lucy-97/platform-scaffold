@@ -1,6 +1,6 @@
 """X-Internal-Secret 校验中间件，保护 AI Engine 不被外部直接访问。
 
-与 Go 端 pkg-platform-core/middleware.InternalAuth 行为对齐：
+与 Go 端 backend-api/internal/middleware.InternalAuth 行为对齐：
 secret 为空时跳过（开发环境）；非空时使用恒定时间比较。
 """
 import secrets

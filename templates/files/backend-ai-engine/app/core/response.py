@@ -1,4 +1,4 @@
-"""统一响应格式。与 Go 端 pkg-platform-core/response 三字段对齐。"""
+"""统一响应格式。与 Go 端 backend-api/internal/response 三字段对齐。"""
 from typing import Any, Optional
 
 from pydantic import BaseModel

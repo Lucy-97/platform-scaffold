@@ -25,7 +25,7 @@ func main() {
 		Short: "Polyglot microservice platform scaffold (Go + Python + Next.js)",
 		Long: `platform 是基于 xdd / aigc 两个生产项目沉淀的微服务脚手架。
 它一次性生成 Go Gateway + Go API + Python AI Engine + Next.js Web + React Admin 全套骨架，
-并附带 deploy-local / deploy-k3s / database / pkg-platform-core 公共组件。`,
+并附带 deploy-local / deploy-k3s / database 等开箱即用配置；通用组件（errcode/crypto/dynconfig/cache/lock/middleware/response）内聚在各 Go 服务的 internal/ 下。`,
 	}
 
 	root.AddCommand(initCmd())

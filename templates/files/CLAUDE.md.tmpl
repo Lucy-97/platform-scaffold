@@ -60,12 +60,12 @@
 ```
 
 - 启动期配置走 [internal/config/config.go](file:///backend-api/internal/config/config.go)，进程启动一次性加载。
-- 运行期配置走 [pkg-platform-core/dynconfig](file:///pkg-platform-core/dynconfig)，5 分钟 Redis 缓存 + 数据库回源。
+- 运行期配置走 [backend-api/internal/dynconfig](file:///backend-api/internal/dynconfig/loader.go)，启动时从 `system_config` 解密回填（缺失/失败优雅降级）。
 - **敏感配置（API Key、第三方 secret）必须 `encrypted=1`**，AES-256-GCM 加密，主密钥由 `CONFIG_MASTER_KEY` 环境变量注入。
 
 ## 5. 错误处理约定
 
-- 业务错误码用 6 位数字，注册到 [pkg-platform-core/errcode](file:///pkg-platform-core/errcode)
+- 业务错误码用 6 位数字，注册到 [backend-api/internal/errcode](file:///backend-api/internal/errcode/errcode.go)
 - HTTP 200 + `{code, msg, data}` 是默认响应；HTTP 401/403/429/500 仅用于基础设施层（鉴权失败、限流、未捕获 panic）
 - 所有错误码必须挂在 errcode registry 上，便于前端统一国际化
 
@@ -76,7 +76,7 @@ Gateway --[X-Internal-Secret + X-User-UUID]--> API / AI-Engine
 ```
 
 - `INTERNAL_API_SECRET` 环境变量在三个服务间共享。
-- 中间件 [pkg-platform-core/middleware.InternalAuth](file:///pkg-platform-core/middleware/middleware.go) 负责校验。
+- 中间件 [middleware.InternalAuth](file:///backend-api/internal/middleware/middleware.go) 负责校验（gateway 侧同名实现在 backend-gateway/internal/middleware）。
 - 校验用 `subtle.ConstantTimeCompare`，防时序攻击。
 - **dev 环境** `INTERNAL_API_SECRET=""` 时跳过校验；prod 必须设置。
 
@@ -85,7 +85,7 @@ Gateway --[X-Internal-Secret + X-User-UUID]--> API / AI-Engine
 1. ❌ Python AI Engine 直接 `INSERT/UPDATE/DELETE` 数据库
 2. ❌ 在前端硬编码 `http://api:port`，所有请求走 Gateway
 3. ❌ JWT_SECRET / INTERNAL_API_SECRET / CONFIG_MASTER_KEY 出现在代码或 git 提交里
-4. ❌ 给 [pkg-platform-core](file:///pkg-platform-core) 引入业务依赖（它必须保持业务无关）
+4. ❌ 给通用组件（`internal/{errcode,crypto,dynconfig,cache,lock,middleware,response}`）引入业务依赖（它们必须保持业务无关）
 5. ❌ 跳过 errcode 注册直接 `c.JSON(http.StatusBadRequest, ...)`
 6. ❌ 在生产部署里把 `system_config.encrypted=0` 用于存储 API Key
 
@@ -111,14 +111,14 @@ backend-api/internal/
 然后：
 1. 在 [router/routes.go](file:///backend-api/internal/router/routes.go) 挂路由
 2. 在 [bootstrap.go](file:///backend-api/internal/app/bootstrap.go) 装配 DI（repo → svc → engine → handler）
-3. 在 [errcode/errcode.go](file:///pkg-platform-core/errcode/errcode.go) 注册新错误码（10xxxx）
+3. 在 [errcode/errcode.go](file:///backend-api/internal/errcode/errcode.go) 注册新错误码（10xxxx）
 4. 数据库变更写到 `database/migrations/`，**禁止直接改 init.sql**
 
 ## 9. 测试
 
-- Go 单测：`go test ./...`
-- pkg-platform-core 必须独立可测：`cd pkg-platform-core && go test ./...`
-- 集成测试：`bash deploy/local/integration-test/run-all.sh`
+- Go 单测：`cd backend-api && go test ./...`（gateway 同理）
+- 集成测试（需本地 MySQL/Redis）：`bash deploy/local/integration-test/run-all.sh`；
+  无基础设施时 `internal/testutil` 夹具会让相关用例自动 skip。
 
 ---
 
