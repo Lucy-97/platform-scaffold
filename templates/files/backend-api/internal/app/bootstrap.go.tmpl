@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	"{{.GoModulePath}}/backend-api/internal/config"
+	"{{.GoModulePath}}/backend-api/internal/dynconfig"
 	"{{.GoModulePath}}/backend-api/internal/engine"
 	"{{.GoModulePath}}/backend-api/internal/handler"
 	"{{.GoModulePath}}/backend-api/internal/repository"
@@ -55,6 +56,14 @@ func Bootstrap() (*gin.Engine, *Deps, error) {
 		return nil, nil, fmt.Errorf("connect mysql: %w", err)
 	}
 	slog.Info("MySQL connected")
+
+	// ─── 动态配置（system_config 表，敏感值 AES-256-GCM 解密）───
+	// 把需要运行期注入的凭据登记到 setters，dynconfig 负责拉取 + 解密 + 回填。
+	// 缺失/解密失败会优雅降级（仅告警，不阻止启动）。空 map 时直接跳过。
+	dynconfig.Load(db, cfg.MasterKey, map[string]dynconfig.Setter{
+		// "GOOGLE_CLIENT_SECRET": func(v string) { cfg.GoogleClientSecret = v },
+		// "PADDLE_API_KEY":       func(v string) { cfg.PaddleAPIKey = v },
+	})
 
 	// ─── Redis ───
 	rdb := redis.NewClient(&redis.Options{

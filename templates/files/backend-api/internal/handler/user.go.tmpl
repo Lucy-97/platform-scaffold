@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"{{.GoModulePath}}/backend-api/internal/engine"
+	"{{.GoModulePath}}/backend-api/internal/errcode"
 	"{{.GoModulePath}}/backend-api/internal/response"
 	"{{.GoModulePath}}/backend-api/internal/service"
 )
@@ -36,7 +37,7 @@ func NewUserHandler(svc service.UserService, eg *engine.ExampleEngine) *UserHand
 func (h *UserHandler) Me(c *gin.Context) {
 	uuid := c.GetHeader("X-User-UUID")
 	if uuid == "" {
-		response.Unauthorized(c, "100001", "missing user identity")
+		response.Unauthorized(c, errcode.ErrUnauthorized.Code, errcode.ErrUnauthorized.Msg)
 		return
 	}
 	u, err := h.svc.GetByUUID(c.Request.Context(), uuid)
@@ -45,7 +46,7 @@ func (h *UserHandler) Me(c *gin.Context) {
 		return
 	}
 	if u == nil {
-		response.Err(c, 404, "100404", "user not found")
+		response.Err(c, 404, errcode.ErrNotFound.Code, errcode.ErrNotFound.Msg)
 		return
 	}
 	response.OK(c, u)
@@ -59,13 +60,13 @@ func (h *UserHandler) Register(c *gin.Context) {
 		Nickname string `json:"nickname"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "000007", "invalid request body")
+		response.BadRequest(c, errcode.ErrParamMissing.Code, errcode.ErrParamMissing.Msg)
 		return
 	}
 
 	result, err := h.exampleEg.RegisterUser(c.Request.Context(), req.Email, req.Nickname)
 	if err != nil {
-		response.BadRequest(c, "000001", err.Error())
+		response.BadRequest(c, errcode.ErrServiceBusy.Code, err.Error())
 		return
 	}
 	response.OK(c, result)

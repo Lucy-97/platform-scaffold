@@ -9,13 +9,18 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	"{{.GoModulePath}}/backend-api/internal/cache"
+	"{{.GoModulePath}}/backend-api/internal/lock"
 	"{{.GoModulePath}}/backend-api/internal/model"
 	"{{.GoModulePath}}/backend-api/internal/repository"
 )
+
+const userCacheTTL = 5 * time.Minute
 
 // UserService 用户原子服务。
 type UserService interface {
@@ -24,25 +29,33 @@ type UserService interface {
 }
 
 type userService struct {
-	repo repository.UserRepository
-	rdb  *redis.Client
+	repo  repository.UserRepository
+	rdb   *redis.Client
+	cache *cache.Service
 }
 
-// NewUserService 创建用户服务。rdb 可为 nil（缓存优雅降级）。
+// NewUserService 创建用户服务。rdb 不可为 nil（缓存/锁在 Redis 不可用时自动 fail-open）。
 func NewUserService(repo repository.UserRepository, rdb *redis.Client) UserService {
-	return &userService{repo: repo, rdb: rdb}
+	return &userService{repo: repo, rdb: rdb, cache: cache.NewService(rdb)}
 }
 
 // GetByUUID 通过业务 UUID 拉取用户。
-func (s *userService) GetByUUID(ctx context.Context, uuid string) (*model.User, error) {
-	if uuid == "" {
+// 演示 Cache-Aside：5 分钟 Redis 缓存 + miss 异步回填；Redis 不可用时退化为直查 DB。
+func (s *userService) GetByUUID(ctx context.Context, userUUID string) (*model.User, error) {
+	if userUUID == "" {
 		return nil, fmt.Errorf("uuid required")
 	}
-	return s.repo.FindByUUID(ctx, uuid)
+	return cache.GetOrLoad(s.cache, ctx, "cache:user:"+userUUID, userCacheTTL, func() (*model.User, error) {
+		return s.repo.FindByUUID(ctx, userUUID)
+	})
 }
 
 // CreateUser 创建用户（原子操作，不含编排逻辑）。
+// 演示分布式锁：用 email 维度的锁避免并发重复创建；锁不可用时 fail-open。
 func (s *userService) CreateUser(ctx context.Context, email, nickname string) (*model.User, error) {
+	if l, err := lock.Acquire(ctx, s.rdb, "LOCK:USER_CREATE:"+email, 10*time.Second); err == nil && l != nil {
+		defer l.Release(ctx)
+	}
 	u := &model.User{
 		UUID:     uuid.New().String(),
 		Email:    email,
