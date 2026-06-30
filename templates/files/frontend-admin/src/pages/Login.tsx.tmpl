@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api, setAdminToken } from "../api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -8,17 +9,15 @@ export default function LoginPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    const resp = await fetch("/admin/login", {
+    const json = await api<{ accessToken?: string }>("/admin/login", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
-      credentials: "include",
     });
-    const json = await resp.json();
     if (json.code !== "200") {
       setErr(json.msg);
       return;
     }
+    if (json.data?.accessToken) setAdminToken(json.data.accessToken);
     window.location.href = "/dashboard";
   }
 

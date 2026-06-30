@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "../api";
 
 interface User {
   uuid: string;
@@ -14,8 +15,7 @@ export default function DashboardPage() {
   useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch("/admin/users", { credentials: "include" });
-        const json = await resp.json();
+        const json = await api<{ data?: User[] }>("/admin/users");
         if (json.code === "200") setUsers(json.data?.data ?? []);
       } finally {
         setLoading(false);
