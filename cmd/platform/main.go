@@ -40,6 +40,8 @@ func main() {
 func initCmd() *cobra.Command {
 	var nonInteractive bool
 	var outputDir string
+	var modulePath, brand, domain string
+	var withBucketProxy bool
 
 	cmd := &cobra.Command{
 		Use:   "init [project-name]",
@@ -54,6 +56,20 @@ func initCmd() *cobra.Command {
 			cfg, err := prompt.AskProjectConfig(defaultName, nonInteractive)
 			if err != nil {
 				return err
+			}
+
+			// 显式传入的 flag 覆盖默认值/交互结果，便于 CI 与脚本化生成。
+			if modulePath != "" {
+				cfg.GoModulePath = modulePath
+			}
+			if brand != "" {
+				cfg.Brand = brand
+			}
+			if domain != "" {
+				cfg.Domain = domain
+			}
+			if cmd.Flags().Changed("bucketproxy") {
+				cfg.Features.BucketProxy = withBucketProxy
 			}
 
 			if outputDir == "" {
@@ -83,6 +99,10 @@ func initCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&nonInteractive, "yes", false, "使用全部默认值，不进入交互模式")
 	cmd.Flags().StringVarP(&outputDir, "output", "o", "", "输出目录（默认与项目名一致）")
+	cmd.Flags().StringVar(&modulePath, "module", "", "Go module 路径前缀，如 github.com/me/my-app（覆盖默认）")
+	cmd.Flags().StringVar(&brand, "brand", "", "品牌名 / 展示名（覆盖默认）")
+	cmd.Flags().StringVar(&domain, "domain", "", "服务域名，如 my-app.ai（覆盖默认）")
+	cmd.Flags().BoolVar(&withBucketProxy, "bucketproxy", false, "是否生成 Cloudflare R2 代理 Worker")
 	return cmd
 }
 
