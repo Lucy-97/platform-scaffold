@@ -1,0 +1,100 @@
+// Package testutil 提供集成测试用的 MySQL + Redis 夹具。
+//
+// 端口/账号可用 TEST_MYSQL_PORT / TEST_MYSQL_USER / TEST_MYSQL_PASSWORD /
+// TEST_REDIS_PORT / TEST_REDIS_PASSWORD 覆盖（默认指向本地 docker-compose）。
+// 基础设施不可用时，调用方应 t.Skip（见 GetTestEnvWithSkip）。
+package testutil
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+
+	"{{.GoModulePath}}/backend-api/internal/model"
+)
+
+const testDBName = "{{.ProjectName}}_test"
+
+var (
+	sharedDB     *gorm.DB
+	sharedRDB    *redis.Client
+	sharedDBErr  error
+	sharedDBOnce sync.Once
+)
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// GetTestEnv 返回连接到 <project>_test 库的 *gorm.DB 与 redis.Client（DB 1）。
+// 仅初始化一次（sync.Once），供整个测试进程复用。
+func GetTestEnv() (*gorm.DB, *redis.Client, error) {
+	sharedDBOnce.Do(func() { sharedDB, sharedRDB, sharedDBErr = initTestEnv() })
+	return sharedDB, sharedRDB, sharedDBErr
+}
+
+// GetTestEnvWithSkip 连不上基础设施时自动 t.Skip。
+func GetTestEnvWithSkip(t *testing.T) (*gorm.DB, *redis.Client) {
+	t.Helper()
+	db, rdb, err := GetTestEnv()
+	if err != nil {
+		t.Skipf("测试基础设施 (MySQL/Redis) 不可用，跳过集成测试: %v", err)
+	}
+	return db, rdb
+}
+
+func initTestEnv() (*gorm.DB, *redis.Client, error) {
+	mysqlPort := envOr("TEST_MYSQL_PORT", "{{.Ports.MySQL}}")
+	user := envOr("TEST_MYSQL_USER", "root")
+	pass := envOr("TEST_MYSQL_PASSWORD", "")
+	auth := user
+	if pass != "" {
+		auth = user + ":" + pass
+	}
+
+	rootDSN := fmt.Sprintf("%s@tcp(localhost:%s)/?charset=utf8mb4&parseTime=True&loc=Local", auth, mysqlPort)
+	rootDB, err := gorm.Open(mysql.Open(rootDSN), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		return nil, nil, err
+	}
+	rootSQL, _ := rootDB.DB()
+	if _, err := rootSQL.Exec("CREATE DATABASE IF NOT EXISTS " + testDBName + " DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"); err != nil {
+		rootSQL.Close()
+		return nil, nil, err
+	}
+	rootSQL.Close()
+
+	dsn := fmt.Sprintf("%s@tcp(localhost:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", auth, mysqlPort, testDBName)
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// AutoMigrate 业务模型（新增模型时在此追加）。
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		return nil, nil, err
+	}
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "localhost:" + envOr("TEST_REDIS_PORT", "{{.Ports.Redis}}"),
+		Password: envOr("TEST_REDIS_PASSWORD", ""),
+		DB:       1,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		return nil, nil, err
+	}
+	return db, rdb, nil
+}

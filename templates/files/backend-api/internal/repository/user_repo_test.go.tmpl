@@ -1,0 +1,30 @@
+package repository
+
+import (
+	"context"
+	"testing"
+
+	"{{.GoModulePath}}/backend-api/internal/model"
+	"{{.GoModulePath}}/backend-api/internal/testutil"
+)
+
+// TestUserRepository_CreateAndFind 演示集成测试写法：连不上 MySQL/Redis 时自动 skip。
+func TestUserRepository_CreateAndFind(t *testing.T) {
+	db, _ := testutil.GetTestEnvWithSkip(t)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+
+	u := &model.User{UUID: "test-uuid-1", Email: "u1@example.com", Nickname: "U1"}
+	if err := repo.Create(ctx, u); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	t.Cleanup(func() { db.Where("uuid = ?", u.UUID).Delete(&model.User{}) })
+
+	got, err := repo.FindByUUID(ctx, u.UUID)
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if got == nil || got.Email != u.Email {
+		t.Fatalf("unexpected result: %+v", got)
+	}
+}
